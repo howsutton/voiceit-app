@@ -171,22 +171,50 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   // Handle session lifecycle based on isPresent state
   useEffect(() => {
     if (isPresent && isVoiceMode) {
-      if (connectionStatus === 'idle' || connectionStatus === 'error') {
+      // If we are present and in voice mode, ensure session is connected
+      if (connectionStatus === 'idle' || connectionStatus === 'error' || (connectionStatus === 'connected' && !liveSessionRef.current)) {
+        console.log("Session lifecycle: connecting live session");
         connectLive();
       }
-    } else if (!isPresent) {
+    } else if (isPresent && !isVoiceMode) {
+      // If we are present but in text mode, close live session if it exists
       if (liveSessionRef.current) {
-        console.log("Closing live session: user no longer present");
+        console.log("Session lifecycle: closing live session for text mode");
+        liveSessionRef.current.close();
+        liveSessionRef.current = null;
+      }
+      if (connectionStatus !== 'connected') {
+        setConnectionStatus('connected');
+      }
+    } else if (!isPresent) {
+      // If not present, close everything
+      if (liveSessionRef.current) {
+        console.log("Session lifecycle: closing live session (no presence)");
         liveSessionRef.current.close();
         liveSessionRef.current = null;
       }
       setConnectionStatus('idle');
-      // Only set lastSeenTime if we were actually present before
       if (isPresentRef.current) {
         lastSeenTimeRef.current = Date.now();
       }
     }
-  }, [isPresent, isVoiceMode]);
+  }, [isPresent, isVoiceMode, connectionStatus]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      console.log("KioskMode unmounting: performing cleanup");
+      if (liveSessionRef.current) {
+        try { liveSessionRef.current.close(); } catch (e) {}
+        liveSessionRef.current = null;
+      }
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
+      }
+      stopAudioPlayback();
+    };
+  }, []);
 
   // Inactivity Timeout Logic
   useEffect(() => {
@@ -206,14 +234,15 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       // Inactivity timeout (prompt)
       if (idleTime > (sessionTimeout - 30) * 1000 && !hasPromptedRef.current && sessionTimeout > 30) {
         if (liveSessionRef.current) {
-          // Use a more natural prompt
-          liveSessionRef.current.sendRealtimeInput({
-            media: { 
-              data: btoa("I haven't heard from you in a while. Do you need any more assistance, or should I close this session?"), 
-              mimeType: 'text/plain' 
-            }
-          });
-          hasPromptedRef.current = true;
+          // Use a more natural prompt via text input to the live session
+          try {
+            liveSessionRef.current.sendRealtimeInput({
+              media: { data: btoa("I haven't heard from you in a while. Do you need any more assistance, or should I close this session?"), mimeType: 'text/plain' }
+            });
+            hasPromptedRef.current = true;
+          } catch (e) {
+            console.warn("Failed to send inactivity prompt:", e);
+          }
         }
       } 
       // Timeout after prompt (or immediately if timeout is reached)
@@ -446,7 +475,24 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       const systemInstruction = `
         You are a real-time kiosk assistant for ${project.title}.
         
-        Follow these rules exactly:
+        CONTEXT:
+        ${project.description}
+        
+        KNOWLEDGE BASE:
+        ${contextText}
+        
+        GREETING INSTRUCTION:
+        A user has just entered the interaction zone. 
+        This is a ${isReturn ? 'RETURNING' : 'NEW'} user.
+        
+        ${isReturn 
+          ? "Greet them warmly with a 'Welcome back!' and ask if they have more questions about " + project.title + "."
+          : "Introduce yourself as the " + project.title + " assistant. Welcome them, briefly mention what the project is about, and invite them to ask questions."
+        }
+        
+        Keep the initial greeting concise but very professional and welcoming.
+        
+        GENERAL RULES:
         
         1. When you receive a "NEW_PRESENCE" signal, immediately respond with a full introduction.
         2. When you receive a "RETURN_PRESENCE" signal, respond with a shorter welcome back message.
@@ -501,51 +547,32 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
             setConnectionStatus('connected');
             setIsListening(true);
             lastActivityRef.current = Date.now();
-            hasPromptedRef.current = false;
-
-            // Trigger proactive introduction
+            hasPromptedRef.current = true; // Mark as prompted since AI will greet via system instruction
+            
+            // Trigger proactive greeting via text signal
+            const signal = isReturn ? 'RETURN_PRESENCE' : 'NEW_PRESENCE';
+            const prompt = isReturn 
+              ? "The user has returned. Please greet them back." 
+              : "A new user has arrived. Please introduce yourself and welcome them.";
+              
+            sessionPromise.then(s => {
+              if (s && isPresentRef.current) {
+                // Use a small timeout to ensure the session is fully ready
+                setTimeout(() => {
+                  if (s && isPresentRef.current) {
+                    s.sendClientContent({
+                      turns: [{ role: 'user', parts: [{ text: prompt }] }],
+                      turnComplete: true
+                    });
+                  }
+                }, 500);
+              }
+            });
+            
             sessionPromise.then(s => {
               console.log("Gemini Live session resolved:", s);
               if (s && isPresentRef.current) {
-                console.log("Session connected. Starting video stream for visual detection.");
-                liveSessionRef.current = s; // Ensure ref is set immediately for sendFrame
-                
-                // 1. Send silent audio nudge to wake up turn logic
-                const silentPcm = new Int16Array(100);
-                const silentBase64 = btoa(String.fromCharCode(...new Uint8Array(silentPcm.buffer)));
-                
-                // Small delay to ensure session is fully established
-                setTimeout(() => {
-                  if (liveSessionRef.current) {
-                    liveSessionRef.current.sendRealtimeInput({
-                      media: { data: silentBase64, mimeType: 'audio/pcm;rate=16000' }
-                    });
-
-                    // 2. Send natural language trigger for explicit instruction
-                    const triggerText = isReturn 
-                      ? "RETURN_PRESENCE" 
-                      : "NEW_PRESENCE";
-                    
-                    console.log(`Sending presence trigger: ${triggerText}`);
-                    
-                    try {
-                      (liveSessionRef.current as any).send({ 
-                        clientContent: { 
-                          turns: [{ role: 'user', parts: [{ text: triggerText }] }], 
-                          turnComplete: true 
-                        } 
-                      });
-                    } catch (e) {
-                      console.warn("Failed to send clientContent, falling back to sendRealtimeInput text", e);
-                      try {
-                        (liveSessionRef.current as any).sendRealtimeInput({ text: triggerText });
-                      } catch (e2) {
-                        console.warn("Failed to send text via sendRealtimeInput", e2);
-                      }
-                    }
-                    hasPromptedRef.current = true;
-                  }
-                }, 500);
+                liveSessionRef.current = s;
                 
                 // Start video streaming loop
                 if (videoRef.current) {
@@ -847,6 +874,8 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       mediaStreamRef.current.getTracks().forEach(track => track.stop());
       mediaStreamRef.current = null;
     }
+    isPresentRef.current = false;
+    setIsPresent(false);
     onExit();
   };
 
@@ -892,59 +921,68 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     }
   };
 
-  if (!isPresent) {
-    return (
-      <div className="h-screen w-full bg-black flex flex-col items-center justify-center text-white p-6 md:p-8 overflow-hidden relative">
-        <video ref={videoRef} autoPlay muted className="absolute inset-0 w-full h-full object-cover opacity-20 grayscale" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
-        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="z-10 text-center w-full max-w-md">
-          <div className="relative mb-8 md:mb-12 flex justify-center">
-            <div className="w-24 h-24 md:w-32 md:h-32 bg-blue-600/20 rounded-full blur-2xl absolute inset-0 animate-pulse" />
-            <div className="w-24 h-24 md:w-32 md:h-32 border-2 border-white/10 rounded-full flex items-center justify-center relative backdrop-blur-sm">
-              <Camera className="w-10 h-10 md:w-12 md:h-12 text-white/40" />
+  return (
+    <AnimatePresence mode="wait">
+      {!isPresent ? (
+        <motion.div 
+          key="waiting"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="h-screen w-full bg-black flex flex-col items-center justify-center text-white p-6 md:p-8 overflow-hidden relative"
+        >
+          <video ref={videoRef} autoPlay muted className="absolute inset-0 w-full h-full object-cover opacity-20 grayscale" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="z-10 text-center w-full max-w-md">
+            <div className="relative mb-8 md:mb-12 flex justify-center">
+              <div className="w-24 h-24 md:w-32 md:h-32 bg-blue-600/20 rounded-full blur-2xl absolute inset-0 animate-pulse" />
+              <div className="w-24 h-24 md:w-32 md:h-32 border-2 border-white/10 rounded-full flex items-center justify-center relative backdrop-blur-sm">
+                <Camera className="w-10 h-10 md:w-12 md:h-12 text-white/40" />
+              </div>
             </div>
-          </div>
-          <h1 className="text-4xl md:text-5xl font-light tracking-tighter mb-4">VoiceIt</h1>
-          <div className="h-20 flex flex-col items-center justify-center">
-            {connectionStatus === 'idle' && (
-              <p className="text-lg md:text-xl text-white/60 font-light max-w-xs md:max-w-md mx-auto leading-tight">Waiting for presence...</p>
-            )}
-            {connectionStatus === 'connecting' && (
-              <div className="flex flex-col items-center gap-4">
-                <p className="text-lg md:text-xl text-blue-400 font-light animate-pulse">Establishing secure connection...</p>
-                <div className="flex gap-1">
-                  <motion.div animate={{ opacity: [0.2, 1, 0.2] }} transition={{ repeat: Infinity, duration: 1 }} className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
-                  <motion.div animate={{ opacity: [0.2, 1, 0.2] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
-                  <motion.div animate={{ opacity: [0.2, 1, 0.2] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
+            <h1 className="text-4xl md:text-5xl font-light tracking-tighter mb-4">VoiceIt</h1>
+            <div className="h-20 flex flex-col items-center justify-center">
+              {connectionStatus === 'idle' && (
+                <p className="text-lg md:text-xl text-white/60 font-light max-w-xs md:max-w-md mx-auto leading-tight">Waiting for presence...</p>
+              )}
+              {connectionStatus === 'connecting' && (
+                <div className="flex flex-col items-center gap-4">
+                  <p className="text-lg md:text-xl text-blue-400 font-light animate-pulse">Establishing secure connection...</p>
+                  <div className="flex gap-1">
+                    <motion.div animate={{ opacity: [0.2, 1, 0.2] }} transition={{ repeat: Infinity, duration: 1 }} className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
+                    <motion.div animate={{ opacity: [0.2, 1, 0.2] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
+                    <motion.div animate={{ opacity: [0.2, 1, 0.2] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
+                  </div>
                 </div>
-              </div>
-            )}
-            {connectionStatus === 'error' && (
-              <div className="flex flex-col items-center gap-2">
-                <p className="text-lg md:text-xl text-red-400 font-light">Connection failed</p>
-                <p className="text-xs md:text-sm text-white/40">Please check your API key or network.</p>
-              </div>
-            )}
-          </div>
-          <button 
-            onClick={startSession} 
-            disabled={connectionStatus === 'connecting'}
-            className={`mt-8 w-full sm:w-auto px-8 py-4 md:py-3 rounded-full text-sm font-medium transition-all ${
-              connectionStatus === 'connecting' 
-                ? 'bg-white/5 text-white/20 cursor-not-allowed' 
-                : 'bg-white/10 hover:bg-white/20 border border-white/10 text-white active:scale-95'
-            }`}
-          >
-            {connectionStatus === 'connecting' ? 'Connecting...' : 'Enter Interaction Zone'}
-          </button>
+              )}
+              {connectionStatus === 'error' && (
+                <div className="flex flex-col items-center gap-2">
+                  <p className="text-lg md:text-xl text-red-400 font-light">Connection failed</p>
+                  <p className="text-xs md:text-sm text-white/40">Please check your API key or network.</p>
+                </div>
+              )}
+            </div>
+            <button 
+              onClick={startSession} 
+              disabled={connectionStatus === 'connecting'}
+              className={`mt-8 w-full sm:w-auto px-8 py-4 md:py-3 rounded-full text-sm font-medium transition-all ${
+                connectionStatus === 'connecting' 
+                  ? 'bg-white/5 text-white/20 cursor-not-allowed' 
+                  : 'bg-white/10 hover:bg-white/20 border border-white/10 text-white active:scale-95'
+              }`}
+            >
+              {connectionStatus === 'connecting' ? 'Connecting...' : 'Enter Interaction Zone'}
+            </button>
+          </motion.div>
         </motion.div>
-      </div>
-    );
-  }
-
-  if (isVoiceMode) {
-    return (
-      <div className="h-screen w-full bg-[#050505] text-white flex flex-col items-center justify-center p-6 md:p-12 overflow-hidden relative">
+      ) : isVoiceMode ? (
+        <motion.div 
+          key="voice"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="h-screen w-full bg-[#050505] text-white flex flex-col items-center justify-center p-6 md:p-12 overflow-hidden relative"
+        >
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] md:w-[1000px] h-[600px] md:h-[1000px] bg-blue-600/5 rounded-full blur-[100px] md:blur-[160px]" />
         </div>
@@ -1099,12 +1137,15 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
             </div>
           </div>
         )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-screen w-full bg-[#050505] text-white flex flex-col font-sans overflow-hidden">
+        </motion.div>
+      ) : (
+        <motion.div
+          key="text"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="h-screen w-full bg-[#050505] text-white flex flex-col font-sans overflow-hidden"
+        >
       <header className="p-4 md:p-6 border-b border-white/10 flex justify-between items-center backdrop-blur-md bg-black/40 z-20">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 md:w-10 md:h-10 bg-blue-600 rounded-lg flex items-center justify-center"><Volume2 className="w-5 h-5 md:w-6 md:h-6" /></div>
@@ -1208,7 +1249,9 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
           </div>
         )}
       </main>
-    </div>
+    </motion.div>
+    )}
+  </AnimatePresence>
   );
 };
 
@@ -2179,7 +2222,11 @@ export default function App() {
       setSessionTimeout={setSessionTimeout}
     />
   );
-  if (mode === 'kiosk' && selectedProject) return <KioskMode project={selectedProject} sessionTimeout={sessionTimeout} onExit={() => setMode('select')} />;
+  if (mode === 'kiosk' && selectedProject) return (
+    <AnimatePresence mode="wait">
+      <KioskMode project={selectedProject} sessionTimeout={sessionTimeout} onExit={() => setMode('select')} />
+    </AnimatePresence>
+  );
 
   return null;
 }
