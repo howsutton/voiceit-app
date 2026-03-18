@@ -27,9 +27,12 @@ export async function generateGroundedAnswer(
     - ${project.instructions}
     - If the answer is not in the context, politely say you don't have that information in the current knowledge base.
     - Always cite the document title and a plausible page number if you find the information.
-    - Format your response as JSON with 'answer' and 'sources' array.
+    - Format your response as JSON with 'answer', 'sources' array, and 'showSummary' boolean.
     - Be professional, extremely concise, and accurate.
     - IMPORTANT: Keep your 'answer' very brief (ideally half the length of a standard response) to ensure it fits on a small display screen.
+    - SESSION END INSTRUCTION:
+      When all questions are asked and answers are given and sources are shown and closed, ask the user: "Is there anything else I can help you with today?".
+      If the user indicates they are finished (e.g., "no", "I'm done", "goodbye"), set 'showSummary' to true in your JSON response.
   `;
 
   console.log("System instruction length:", systemInstruction.length);

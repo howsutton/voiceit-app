@@ -35,6 +35,7 @@ export const AI_CONFIG = {
     type: Type.OBJECT,
     properties: {
       answer: { type: Type.STRING, description: "The grounded answer to the user's question." },
+      showSummary: { type: Type.BOOLEAN, description: "Whether to show the session summary and QR code. Set to true when the user indicates they are finished." },
       sources: {
         type: Type.ARRAY,
         items: {

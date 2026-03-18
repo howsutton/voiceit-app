@@ -4,10 +4,11 @@ import {
   Mic, MicOff, Send, BookOpen, User, Settings, 
   LayoutDashboard, FileText, Activity, LogOut,
   ChevronRight, Volume2, Search, Info, Camera, Trash2,
-  Clock, RefreshCw, Plus
+  Clock, RefreshCw, Plus, CheckCircle2, Phone, Mail, Printer
 } from 'lucide-react';
 import { Project, Message, Document } from './types';
 import { generateGroundedAnswer } from './services/aiService';
+import { QRCodeCanvas } from 'qrcode.react';
 
 import { GoogleGenAI, Modality, LiveServerMessage, Type, FunctionDeclaration } from "@google/genai";
 
@@ -16,6 +17,309 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 // --- Components ---
+
+const SummaryPage = ({ data }: { data: string }) => {
+  const [summary, setSummary] = useState<any>(null);
+  const [docs, setDocs] = useState<Document[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    try {
+      const decoded = decodeURIComponent(escape(atob(data)));
+      const parsed = JSON.parse(decoded);
+      setSummary(parsed);
+      
+      if (parsed.projectId && parsed.docIds && parsed.docIds.length > 0) {
+        fetch(`${API_BASE}/api/projects/${parsed.projectId}/documents`)
+          .then(res => res.json())
+          .then(allDocs => {
+            setDocs(allDocs.filter((d: any) => parsed.docIds.includes(d.id)));
+          })
+          .catch(err => console.error("Failed to fetch docs for summary:", err))
+          .finally(() => setLoading(false));
+      } else {
+        setLoading(false);
+      }
+    } catch (e) {
+      setLoading(false);
+    }
+  }, [data]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin" />
+          <p className="text-slate-500 font-medium">Loading summary...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!summary) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center p-8 bg-white rounded-3xl shadow-xl border border-slate-200 max-w-md">
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Invalid Summary Data</h1>
+          <p className="text-slate-500">The link you followed appears to be broken or incomplete.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-6 md:p-12 font-sans">
+      <div className="max-w-3xl mx-auto">
+        <header className="mb-12 flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Session Summary</h1>
+            <p className="text-slate-500">VoiceIt Assistant Interaction</p>
+          </div>
+          <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-100">
+            <Volume2 className="w-6 h-6" />
+          </div>
+        </header>
+
+        <section className="space-y-8 mb-12">
+          <h2 className="text-xl font-bold text-slate-800 border-b border-slate-200 pb-2 flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+            Questions & Answers
+          </h2>
+          {summary.qa.length > 0 ? (
+            summary.qa.map((item: any, i: number) => (
+              <div key={i} className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-100 hover:border-indigo-100 transition-all">
+                <div className="mb-6">
+                  <p className="text-indigo-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-3">Question</p>
+                  <p className="text-slate-900 font-bold text-xl md:text-2xl leading-tight">{item.q}</p>
+                </div>
+                <div className="pl-4 border-l-4 border-emerald-500 bg-emerald-50/30 p-4 rounded-r-2xl">
+                  <p className="text-emerald-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-2">VoiceIt Answer</p>
+                  <p className="text-slate-700 leading-relaxed text-lg">{item.a}</p>
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="text-slate-400 italic">No questions were recorded in this session.</p>
+          )}
+        </section>
+
+        <section className="space-y-4 mb-12">
+          <h2 className="text-xl font-bold text-slate-800 border-b border-slate-200 pb-2 flex items-center gap-2">
+            <BookOpen className="w-5 h-5 text-indigo-500" />
+            Source Documents
+          </h2>
+          {docs.length > 0 ? (
+            <div className="grid grid-cols-1 gap-4">
+              {docs.map((doc: any, i: number) => (
+                <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:border-indigo-300 transition-all shadow-sm">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-500 transition-all">
+                      <FileText className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-800 block">{doc.title}</span>
+                      <span className="text-xs text-slate-400 uppercase tracking-wider">{doc.page_count} Pages</span>
+                    </div>
+                  </div>
+                  <a 
+                    href={`data:application/pdf;base64,${doc.content}`} 
+                    download={`${doc.title}.pdf`}
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all text-sm"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Download PDF
+                  </a>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-slate-400 italic">No source documents were referenced or available for download.</p>
+          )}
+        </section>
+
+        <footer className="pt-12 border-t border-slate-200 text-center pb-12">
+          <div className="inline-flex items-center gap-2 text-slate-900 font-bold text-lg mb-2">
+            <Volume2 className="w-5 h-5 text-indigo-600" />
+            VoiceIt Assistant
+          </div>
+          <p className="text-slate-500 text-sm">Cherami Ltd. · 868-222-0011</p>
+          <div className="mt-6 flex justify-center gap-6">
+            <div className="flex items-center gap-2 text-slate-400 text-xs">
+              <Phone className="w-3 h-3" />
+              869-467-1623
+            </div>
+            <div className="flex items-center gap-2 text-slate-400 text-xs">
+              <Mail className="w-3 h-3" />
+              info@lawcommission.gov.kn
+            </div>
+          </div>
+        </footer>
+      </div>
+    </div>
+  );
+};
+
+const SummaryPopup = ({ messages, documents, projectId, onClose }: { messages: Message[], documents: Document[], projectId: string, onClose: () => void }) => {
+  // Filter messages to get Q&A
+  const qa = messages.filter(m => m.role === 'user' || m.role === 'model')
+    .reduce((acc: any[], m, i, arr) => {
+      if (m.role === 'user') {
+        const next = arr.slice(i + 1).find(msg => msg.role === 'model');
+        if (next) {
+          acc.push({ q: m.content, a: next.content });
+        }
+      }
+      return acc;
+    }, []);
+
+  // Get unique documents referenced in sources
+  const referencedDocTitles = new Set(
+    messages.flatMap(m => m.sources || []).map(s => s.documentTitle)
+  );
+  
+  const referencedDocs = documents.filter(d => referencedDocTitles.has(d.title));
+
+  // Create summary data
+  const summary = {
+    projectId,
+    qa,
+    docIds: referencedDocs.map(d => d.id)
+  };
+
+  // Safe base64 encoding for UTF-8
+  const encodedData = btoa(unescape(encodeURIComponent(JSON.stringify(summary))));
+  const summaryUrl = `${window.location.origin}${window.location.pathname}?summary=${encodedData}`;
+
+  const handlePrint = () => {
+    // Ensure the print area is ready and then trigger print
+    setTimeout(() => {
+      window.print();
+    }, 100);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          #print-area, #print-area * {
+            visibility: visible !important;
+          }
+          #print-area {
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 4in !important;
+            height: 4in !important;
+            padding: 0.2in !important;
+            background: white !important;
+            color: black !important;
+            font-family: sans-serif !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
+            z-index: 9999 !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
+      
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        className="bg-white rounded-[40px] p-8 md:p-12 max-w-2xl w-full text-center shadow-2xl relative overflow-hidden no-print"
+      >
+        {/* Printable Area (Hidden in UI, visible in print) */}
+        <div id="print-area" className="hidden">
+          <div style={{ textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>
+            <h1 style={{ fontSize: '18px', margin: '0' }}>VoiceIt Session</h1>
+            <p style={{ fontSize: '10px', color: '#666', margin: '2px 0' }}>Thank you for visiting</p>
+          </div>
+          
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px 0' }}>
+            <p style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '10px' }}>Scan for Session Summary</p>
+            <QRCodeCanvas value={summaryUrl} size={150} level="H" includeMargin={false} />
+            <p style={{ fontSize: '9px', color: '#888', marginTop: '10px', textAlign: 'center' }}>Scan this code to view your questions, answers, and download source documents.</p>
+          </div>
+
+          <div style={{ borderTop: '1px solid #eee', paddingTop: '10px', fontSize: '8px', color: '#444' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span>Tel: 869-467-1623</span>
+              <span>info@lawcommission.gov.kn</span>
+            </div>
+            <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#000' }}>
+              Powered by Cherami Ltd. - 868-222-0011
+            </div>
+          </div>
+        </div>
+
+        {/* UI Content */}
+        <div className="no-print">
+          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-600 via-indigo-500 to-emerald-400" />
+          
+          <div className="mb-6 inline-flex items-center justify-center w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl">
+            <CheckCircle2 className="w-8 h-8" />
+          </div>
+          
+          <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">Thank You!</h2>
+          <p className="text-slate-500 text-lg mb-8">Thank you for using the VoiceIt application.</p>
+          
+          <div className="flex flex-col items-center justify-center mb-10">
+            <div className="p-6 bg-white rounded-3xl border-2 border-slate-100 shadow-xl">
+              <QRCodeCanvas value={summaryUrl} size={180} level="H" includeMargin={true} />
+            </div>
+            <p className="mt-4 text-slate-400 text-[10px] font-bold uppercase tracking-[0.2em]">Scan to save your session summary</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10 text-left">
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Contact Information</p>
+              <div className="flex items-center gap-2 text-slate-700">
+                <Phone className="w-4 h-4 text-slate-300" />
+                <span className="font-medium">869-467-1623</span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-700">
+                <Mail className="w-4 h-4 text-slate-300" />
+                <span className="font-medium text-sm">info@lawcommission.gov.kn</span>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Powered By</p>
+              <div className="flex items-center gap-2 text-slate-900">
+                <span className="font-bold">Cherami Ltd.</span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-700">
+                <Phone className="w-4 h-4 text-slate-300" />
+                <span className="font-medium">868-222-0011</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-4">
+            <button 
+              onClick={handlePrint}
+              className="flex-1 py-5 bg-white border-2 border-slate-200 text-slate-900 rounded-2xl font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+            >
+              <Printer className="w-5 h-5" />
+              Print Receipt
+            </button>
+            <button 
+              onClick={onClose}
+              className="flex-1 py-5 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 active:scale-[0.98]"
+            >
+              Close & Finish
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
 
 const VoiceOrb = ({ isSpeaking, isThinking, onClick }: { isSpeaking: boolean, isThinking: boolean, onClick?: () => void }) => {
   return (
@@ -78,6 +382,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [selectedSource, setSelectedSource] = useState<any>(null);
+  const [showSummary, setShowSummary] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
@@ -472,6 +777,15 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         },
       };
 
+      const showSummaryFunctionDeclaration: FunctionDeclaration = {
+        name: "showSummary",
+        parameters: {
+          type: Type.OBJECT,
+          description: "Display the session summary and QR code to the user. Call this when the user indicates they are finished with the session (e.g., 'no', 'I'm done', 'goodbye') after you've asked if there's anything else you can help with.",
+          properties: {},
+        },
+      };
+
       const systemInstruction = `
         You are a real-time kiosk assistant for ${project.title}.
         
@@ -527,6 +841,10 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         - If they say "close source", "hide source", or "stop showing", call the 'closeSource' tool.
         - You can handle multiple sources. If there are multiple, ask which one they want to see or offer to show them all.
         - READ SOURCE FEATURE: When a source is shown on screen via 'showSource', you MUST ask the user if they would like you to read out what is shown. If they say yes, read the excerpt clearly and naturally.
+        
+        SESSION END INSTRUCTION:
+        When all questions are asked and answers are given and sources are shown and closed, ask the user: "Is there anything else I can help you with today?".
+        If the user indicates they are finished (e.g., "no", "I'm done", "goodbye"), call the 'showSummary' tool immediately.
       `;
 
       const sessionPromise = currentAi.live.connect({
@@ -539,7 +857,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
           systemInstruction,
           inputAudioTranscription: {},
           outputAudioTranscription: {},
-          tools: [{ functionDeclarations: [showSourceFunctionDeclaration, closeSourceFunctionDeclaration] }],
+          tools: [{ functionDeclarations: [showSourceFunctionDeclaration, closeSourceFunctionDeclaration, showSummaryFunctionDeclaration] }],
         },
         callbacks: {
           onopen: () => {
@@ -560,12 +878,13 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 // Use a small timeout to ensure the session is fully ready
                 setTimeout(() => {
                   if (s && isPresentRef.current) {
+                    console.log("Sending proactive greeting prompt to AI...");
                     s.sendClientContent({
-                      turns: [{ role: 'user', parts: [{ text: prompt }] }],
+                      turns: [{ role: 'user', parts: [{ text: prompt + " Please respond immediately with your greeting." }] }],
                       turnComplete: true
                     });
                   }
-                }, 500);
+                }, 800);
               }
             });
             
@@ -710,6 +1029,19 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                         s.sendToolResponse({
                           functionResponses: [{
                             name: 'closeSource',
+                            id: call.id,
+                            response: { success: true }
+                          }]
+                        });
+                      }
+                    });
+                  } else if (call.name === 'showSummary') {
+                    setShowSummary(true);
+                    sessionPromise.then(s => {
+                      if (s) {
+                        s.sendToolResponse({
+                          functionResponses: [{
+                            name: 'showSummary',
                             id: call.id,
                             response: { success: true }
                           }]
@@ -865,6 +1197,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
 
   const handleExit = () => {
     console.log("Exiting Kiosk Mode...");
+    setShowSummary(false);
     stopAudioPlayback();
     if (liveSessionRef.current) {
       liveSessionRef.current.close();
@@ -877,6 +1210,22 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     isPresentRef.current = false;
     setIsPresent(false);
     onExit();
+  };
+
+  const handleReset = () => {
+    console.log("Resetting session and returning to presence detection...");
+    setShowSummary(false);
+    stopAudioPlayback();
+    if (liveSessionRef.current) {
+      liveSessionRef.current.close();
+      liveSessionRef.current = null;
+    }
+    // We don't stop the media stream tracks here as we want to keep the camera active for presence detection
+    isPresentRef.current = false;
+    setIsPresent(false);
+    setMessages([]);
+    setRemainingSeconds(sessionTimeout);
+    setConnectionStatus('idle');
   };
 
   const handleSend = async (text: string) => {
@@ -912,6 +1261,9 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
           created_at: new Date().toISOString()
         };
         setMessages(prev => [...prev, aiMsg]);
+        if (result.showSummary) {
+          setShowSummary(true);
+        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -1137,6 +1489,15 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
             </div>
           </div>
         )}
+
+        {showSummary && (
+          <SummaryPopup 
+            messages={messages} 
+            documents={documents} 
+            projectId={project.id}
+            onClose={handleReset} 
+          />
+        )}
         </motion.div>
       ) : (
         <motion.div
@@ -1247,6 +1608,15 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
               </div>
             </div>
           </div>
+        )}
+
+        {showSummary && (
+          <SummaryPopup 
+            messages={messages} 
+            documents={documents} 
+            projectId={project.id}
+            onClose={handleReset} 
+          />
         )}
       </main>
     </motion.div>
@@ -2151,6 +2521,14 @@ export default function App() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessionTimeout, setSessionTimeout] = useState(180); // Default 3 minutes
+
+  // Check for summary page
+  const urlParams = new URLSearchParams(window.location.search);
+  const summaryData = urlParams.get('summary');
+
+  if (summaryData) {
+    return <SummaryPage data={summaryData} />;
+  }
 
   useEffect(() => {
     fetch(`${API_BASE}/api/projects`).then(res => res.json()).then(setProjects);
