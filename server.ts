@@ -13,7 +13,7 @@ async function startServer() {
   console.log("Starting VoiceIt Backend...");
   
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
