@@ -979,7 +979,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
           >
             Exit
           </button>
-          <button onClick={() => setIsVoiceMode(false)} className="px-4 md:px-6 py-2 md:py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] md:text-sm font-medium transition-all">Text Mode</button>
+          <button onClick={() => { setIsVoiceMode(false); setIsListening(false); setIsSpeaking(false); setIsThinking(false); }} className="px-4 md:px-6 py-2 md:py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] md:text-sm font-medium transition-all">Text Mode</button>
         </div>
         <div className="z-10 flex flex-col items-center gap-8 md:gap-12 w-full max-w-2xl">
           <div className="relative">
@@ -1225,7 +1225,7 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
   const [newProject, setNewProject] = useState({ title: '', description: '', instructions: '' });
   const [uploadingDoc, setUploadingDoc] = useState({ title: '', content: '' });
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ 
@@ -1331,15 +1331,18 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
   };
 
   const handleUploadDoc = async () => {
-    if (!managingProject || (!uploadingDoc.title && !selectedFile)) return;
+    if (!managingProject || (!uploadingDoc.title && selectedFiles.length === 0 && !uploadingDoc.content)) return;
     
     setIsUploading(true);
     try {
       const formData = new FormData();
       formData.append('title', uploadingDoc.title);
       formData.append('content', uploadingDoc.content);
-      if (selectedFile) {
-        formData.append('file', selectedFile);
+      
+      if (selectedFiles.length > 0) {
+        selectedFiles.forEach(file => {
+          formData.append('files', file);
+        });
       }
 
       await fetch(`${API_BASE}/api/projects/${managingProject.id}/documents`, {
@@ -1348,7 +1351,7 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
       });
       
       setUploadingDoc({ title: '', content: '' });
-      setSelectedFile(null);
+      setSelectedFiles([]);
       setShowUploadModal(false);
       handleManageProject(managingProject);
     } catch (error) {
@@ -1985,17 +1988,28 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
                         type="file" 
                         className="hidden" 
                         accept=".pdf"
-                        onChange={e => setSelectedFile(e.target.files?.[0] || null)}
+                        multiple
+                        onChange={e => {
+                          const files = Array.from(e.target.files || []);
+                          setSelectedFiles(prev => [...prev, ...files]);
+                        }}
                       />
                     </label>
                   </div>
-                  {selectedFile && (
-                    <div className="flex items-center gap-2 p-2 bg-indigo-50 rounded-lg border border-indigo-100">
-                      <FileText className="w-4 h-4 text-indigo-600" />
-                      <span className="text-xs md:text-sm font-medium text-indigo-700 truncate">{selectedFile.name}</span>
-                      <button onClick={() => setSelectedFile(null)} className="ml-auto text-indigo-400 hover:text-indigo-600">
-                        <MicOff className="w-4 h-4" />
-                      </button>
+                  {selectedFiles.length > 0 && (
+                    <div className="space-y-2 max-h-32 overflow-y-auto pr-2">
+                      {selectedFiles.map((file, idx) => (
+                        <div key={idx} className="flex items-center gap-2 p-2 bg-indigo-50 rounded-lg border border-indigo-100">
+                          <FileText className="w-4 h-4 text-indigo-600" />
+                          <span className="text-xs md:text-sm font-medium text-indigo-700 truncate flex-1">{file.name}</span>
+                          <button 
+                            onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== idx))} 
+                            className="text-indigo-400 hover:text-indigo-600"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -2021,7 +2035,7 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
               </div>
               <div className="p-6 md:p-8 bg-slate-50 flex flex-col sm:flex-row justify-end gap-3">
                 <button 
-                  onClick={() => { setShowUploadModal(false); setSelectedFile(null); }}
+                  onClick={() => { setShowUploadModal(false); setSelectedFiles([]); }}
                   className="px-6 py-2 text-slate-600 font-bold text-sm md:text-base"
                 >
                   Cancel

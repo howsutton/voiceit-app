@@ -152,6 +152,7 @@ async function startServer() {
 
   app.delete("/api/projects/:id", checkDb, (req, res) => {
     try {
+      db.prepare("DELETE FROM documents WHERE project_id = ?").run(req.params.id);
       db.prepare("DELETE FROM projects WHERE id = ?").run(req.params.id);
       res.json({ success: true });
     } catch (err) {
@@ -168,39 +169,53 @@ async function startServer() {
     }
   });
 
-  app.post("/api/projects/:id/documents", checkDb, upload.single('file'), async (req, res) => {
+  app.post("/api/projects/:id/documents", checkDb, upload.array('files'), async (req, res) => {
     try {
-      let title = req.body.title;
-      let content = req.body.content;
-      let pageCount = 1;
+      const files = req.files as Express.Multer.File[];
+      const results = [];
 
-      if (req.file) {
+      if (files && files.length > 0) {
         const require = createRequire(import.meta.url);
         const { PDFParse } = require("pdf-parse");
-        const parser = new PDFParse({ data: req.file.buffer });
-        const data = await parser.getText();
-        content = data.text;
-        pageCount = data.total;
-        if (!content || content.trim().length === 0) {
-          console.warn(`Warning: No text content extracted from PDF: ${req.file.originalname}. It might be a scanned document or image-based.`);
-        } else {
-          console.log(`Successfully extracted ${content.length} characters from PDF: ${req.file.originalname}`);
+
+        for (const file of files) {
+          let title = file.originalname;
+          let content = "";
+          let pageCount = 1;
+
+          const parser = new PDFParse({ data: file.buffer });
+          const data = await parser.getText();
+          content = data.text;
+          pageCount = data.total;
+
+          if (!content || content.trim().length === 0) {
+            console.warn(`Warning: No text content extracted from PDF: ${file.originalname}.`);
+          }
+
+          const id = 'doc_' + Math.random().toString(36).substring(7);
+          db.prepare("INSERT INTO documents (id, project_id, title, content, page_count) VALUES (?, ?, ?, ?, ?)")
+            .run(id, req.params.id, title, content, pageCount);
+          
+          results.push({ id, title, pageCount });
         }
-        if (!title) title = req.file.originalname;
+      } else if (req.body.content) {
+        const title = req.body.title || "Untitled Document";
+        const content = req.body.content;
+        const pageCount = 1;
+        const id = 'doc_' + Math.random().toString(36).substring(7);
+        db.prepare("INSERT INTO documents (id, project_id, title, content, page_count) VALUES (?, ?, ?, ?, ?)")
+          .run(id, req.params.id, title, content, pageCount);
+        results.push({ id, title, pageCount });
       }
 
-      if (!content) {
-        return res.status(400).json({ error: "No content or file provided" });
+      if (results.length === 0) {
+        return res.status(400).json({ error: "No content or files provided" });
       }
 
-      const id = 'doc_' + Math.random().toString(36).substring(7);
-      db.prepare("INSERT INTO documents (id, project_id, title, content, page_count) VALUES (?, ?, ?, ?, ?)")
-        .run(id, req.params.id, title, content, pageCount);
-      
-      res.json({ id, title, pageCount });
+      res.json(results);
     } catch (error) {
-      console.error("PDF Upload Error:", error);
-      res.status(500).json({ error: "Failed to process PDF" });
+      console.error("Document Upload Error:", error);
+      res.status(500).json({ error: "Failed to process documents" });
     }
   });
 
