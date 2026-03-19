@@ -204,7 +204,8 @@ async function startServer() {
         // Use import instead of require for pdf-parse if possible, 
         // but it's a CJS module, so createRequire is fine.
         const require = createRequire(import.meta.url);
-        const pdf = require("pdf-parse");
+        const pdfModule = require("pdf-parse");
+        const pdf = typeof pdfModule === 'function' ? pdfModule : pdfModule.default;
         console.log("pdf-parse library loaded. Type:", typeof pdf);
 
         for (const file of files) {
@@ -215,7 +216,7 @@ async function startServer() {
           try {
             console.log(`Parsing PDF: ${file.originalname}, size: ${file.buffer.length} bytes`);
             const data = await pdf(file.buffer);
-            content = data.text;
+            content = data.text || "";
             pageCount = data.numpages || 1;
             
             console.log(`Extracted ${content?.length || 0} characters from PDF: ${file.originalname}`);
