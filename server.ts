@@ -341,23 +341,37 @@ async function startServer() {
 
   app.get("/api/sessions/:id/summary", checkDb, (req, res) => {
     try {
-      const session = db.prepare("SELECT * FROM sessions WHERE id = ?").get(req.params.id);
+      const session = db.prepare("SELECT * FROM sessions WHERE id = ?").get(req.params.id) as any;
       if (!session) return res.status(404).json({ error: "Session not found" });
 
-      const messages = db.prepare("SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC").all(req.params.id);
-      const qa = messages.reduce((acc: any[], m: any, i: number, arr: any[]) => {
-        if (m.role === 'user') {
-          const next = arr.slice(i + 1).find(msg => msg.role === 'model');
-          if (next) {
-            acc.push({ 
-              q: m.content, 
-              a: next.content,
-              sources: JSON.parse(next.sources_json || '[]')
-            });
+      const messages = db.prepare("SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC").all(req.params.id) as any[];
+      
+      const qa = [];
+      let i = 0;
+      while (i < messages.length) {
+        if (messages[i].role === 'user') {
+          // Find the next model response
+          let j = i + 1;
+          while (j < messages.length && messages[j].role !== 'model') {
+            j++;
           }
+          
+          if (j < messages.length) {
+            qa.push({
+              q: messages[i].content,
+              a: messages[j].content,
+              sources: JSON.parse(messages[j].sources_json || '[]')
+            });
+            // Move i to j to avoid re-pairing the same model response with multiple user messages
+            // (unless we want that, but strictly pairing is safer for "turns")
+            i = j + 1;
+          } else {
+            i++;
+          }
+        } else {
+          i++;
         }
-        return acc;
-      }, []);
+      }
 
       const docs = db.prepare("SELECT id, title, page_count FROM documents WHERE project_id = ?").all(session.project_id);
       
@@ -369,6 +383,7 @@ async function startServer() {
         sources: docs
       });
     } catch (err) {
+      console.error("Summary fetch failed:", err);
       res.status(500).json({ error: "Failed to fetch session summary" });
     }
   });

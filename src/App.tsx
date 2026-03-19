@@ -99,20 +99,33 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
                   <p className="text-indigo-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-3">Question</p>
                   <p className="text-slate-900 font-bold text-xl md:text-2xl leading-tight">{item.q}</p>
                 </div>
-                <div className="pl-4 border-l-4 border-emerald-500 bg-emerald-50/30 p-4 rounded-r-2xl">
-                  <p className="text-emerald-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-2">VoiceIt Answer</p>
-                  <p className="text-slate-700 leading-relaxed text-lg">{item.a}</p>
-                  {item.sources && item.sources.length > 0 && (
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {item.sources.map((src: any, si: number) => (
-                        <div key={si} className="text-[10px] bg-white/50 px-2 py-1 rounded border border-emerald-100 text-emerald-700 flex items-center gap-1">
-                          <BookOpen className="w-3 h-3" />
-                          {src.documentTitle} (p. {src.pageNumber})
-                        </div>
-                      ))}
+        <div className="pl-4 border-l-4 border-emerald-500 bg-emerald-50/30 p-4 rounded-r-2xl">
+          <p className="text-emerald-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-2">VoiceIt Answer</p>
+          <p className="text-slate-700 leading-relaxed text-lg">{item.a}</p>
+          {item.sources && item.sources.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sources</p>
+              <div className="flex flex-wrap gap-2">
+                {item.sources.map((src: any, si: number) => (
+                  <div key={si} className="group relative">
+                    <div className="text-[10px] bg-white px-2 py-1.5 rounded-lg border border-emerald-100 text-emerald-700 flex items-center gap-1.5 shadow-sm">
+                      <BookOpen className="w-3 h-3" />
+                      <span className="font-medium">{src.documentTitle}</span>
+                      <span className="opacity-40">•</span>
+                      <span>p. {src.pageNumber}</span>
                     </div>
-                  )}
-                </div>
+                    {src.excerpt && (
+                      <div className="mt-2 p-4 bg-slate-50 border-l-4 border-indigo-200 rounded-r-2xl text-xs text-slate-600 italic leading-relaxed shadow-sm">
+                        <p className="font-bold text-[9px] uppercase tracking-widest text-indigo-400 mb-1 not-italic">Excerpt</p>
+                        "{src.excerpt}"
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
               </div>
             ))
           ) : (
@@ -146,35 +159,32 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
           )}
         </section>
 
-<footer className="pt-12 border-t border-slate-200 text-center pb-12">
-  <div className="inline-flex items-center gap-2 text-slate-900 font-bold text-lg mb-2">
-    <Volume2 className="w-5 h-5 text-indigo-600" />
-    VoiceIt Assistant
-  </div>
-
-  <div className="mt-6 flex justify-center gap-6">
-    <div className="flex items-center gap-2 text-slate-400 text-xs">
-      <Phone className="w-3 h-3" />
-      869-467-1623
-    </div>
-
-    <div className="flex items-center gap-2 text-slate-400 text-xs">
-      <Mail className="w-3 h-3" />
-      info@lawcommission.gov.kn
-    </div>
-  </div>
-
-  <p className="text-slate-500 text-sm mt-6">
-    Cherami Ltd. - 868-222-0011
-  </p>
-</footer>
+        <footer className="pt-12 border-t border-slate-200 text-center pb-12">
+          <div className="inline-flex items-center gap-2 text-slate-900 font-bold text-lg mb-6">
+            <Volume2 className="w-5 h-5 text-indigo-600" />
+            VoiceIt Assistant
+          </div>
+          <div className="flex flex-col items-center gap-4">
+            <div className="flex justify-center gap-6">
+              <div className="flex items-center gap-2 text-slate-400 text-xs">
+                <Phone className="w-3 h-3" />
+                869-467-1623
+              </div>
+              <div className="flex items-center gap-2 text-slate-400 text-xs">
+                <Mail className="w-3 h-3" />
+                info@lawcommission.gov.kn
+              </div>
+            </div>
+            <p className="text-slate-500 text-sm font-medium">Cherami Ltd. · 868-222-0011</p>
+          </div>
+        </footer>
       </div>
     </div>
   );
 };
 
 const SummaryPopup = ({ sessionId, onClose, onPrint }: { sessionId: string, onClose: () => void, onPrint?: () => void }) => {
-  const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "https://voiceit.caribdeasigns.com";
+  const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "https://voiceit.cherami.com";
   const summaryUrl = `${PUBLIC_BASE_URL}/session/${sessionId}`;
 
   const handlePrint = () => {
@@ -388,6 +398,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const lastActivityRef = useRef<number>(Date.now());
   const hasPromptedRef = useRef<boolean>(false);
   const lastSeenTimeRef = useRef<number | null>(null);
+  const currentTurnRef = useRef<{ userText: string, modelText: string, sources: any[] }>({ userText: '', modelText: '', sources: [] });
   const scrollRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -445,7 +456,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
             console.log("Initial presence detected: starting session.");
             startSession(); 
           }
-        }, 2000);
+        }, 500);
       } catch (err) {
         console.warn("Media access denied or unavailable:", err);
         setError("Camera/Microphone access is required for Kiosk mode.");
@@ -583,7 +594,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
           }
         }
       }
-    }, 2000);
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [isPresent]);
@@ -865,6 +876,9 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
             lastActivityRef.current = Date.now();
             hasPromptedRef.current = true; // Mark as prompted since AI will greet via system instruction
             
+            // Reset current turn tracking
+            currentTurnRef.current = { userText: '', modelText: '', sources: [] };
+            
             // Trigger proactive greeting via text signal
             const signal = isReturn ? 'RETURN_PRESENCE' : 'NEW_PRESENCE';
             const promptText = isReturn 
@@ -882,7 +896,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       turnComplete: true
                     });
                   }
-                }, 400);
+                }, 100);
               }
             });
             
@@ -995,6 +1009,8 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       ...newSource
                     });
                     
+                    currentTurnRef.current.sources.push(newSource);
+                    
                     // Add source to the current model message
                     setMessages(prev => {
                       const lastMsg = prev[prev.length - 1];
@@ -1052,6 +1068,45 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
 
               if (message.serverContent?.turnComplete) {
                 setTranscription('');
+                
+                // Save the turn to backend if we have content
+                if (session && (currentTurnRef.current.userText || currentTurnRef.current.modelText)) {
+                  const saveTurn = async () => {
+                    try {
+                      // Save user message
+                      if (currentTurnRef.current.userText) {
+                        await fetch(`${API_BASE}/api/sessions/${session}/messages`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ 
+                            role: 'user', 
+                            content: currentTurnRef.current.userText 
+                          })
+                        });
+                      }
+                      
+                      // Save model message with sources
+                      if (currentTurnRef.current.modelText) {
+                        await fetch(`${API_BASE}/api/sessions/${session}/messages`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ 
+                            role: 'model', 
+                            content: currentTurnRef.current.modelText,
+                            sources: currentTurnRef.current.sources
+                          })
+                        });
+                      }
+                      
+                      // Reset for next turn
+                      currentTurnRef.current = { userText: '', modelText: '', sources: [] };
+                    } catch (e) {
+                      console.warn("Failed to save turn to backend:", e);
+                    }
+                  };
+                  saveTurn();
+                }
+
                 setMessages(prev => {
                   const lastMsg = prev[prev.length - 1];
                   if (lastMsg?.id === 'live-current') {
@@ -1067,8 +1122,9 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
 
               // User transcription
               if (message.serverContent?.inputTranscription?.text) {
-                const text = message.serverContent.inputTranscription.text.toLowerCase();
-                setTranscription(message.serverContent.inputTranscription.text);
+                const text = message.serverContent.inputTranscription.text;
+                setTranscription(text);
+                currentTurnRef.current.userText = text;
                 lastActivityRef.current = Date.now();
                 hasPromptedRef.current = false;
 
@@ -1089,6 +1145,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 setIsSpeaking(true); // Ensure text is shown when model starts responding
                 const textParts = message.serverContent.modelTurn.parts.filter(p => p.text).map(p => p.text).join("");
                 if (textParts) {
+                  currentTurnRef.current.modelText += textParts;
                   setMessages(prev => {
                     const lastMsg = prev[prev.length - 1];
                     if (lastMsg?.role === 'model' && lastMsg.id === 'live-current') {
@@ -1258,6 +1315,13 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       setIsThinking(true);
       
       try {
+        // Save user message to backend
+        fetch(`${API_BASE}/api/sessions/${session}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'user', content: text })
+        }).catch(e => console.warn("Failed to save user message:", e));
+
         const history = messages.map(m => ({ role: m.role, content: m.content }));
         const result = await generateGroundedAnswer(text, project, documents, history);
         
@@ -1269,6 +1333,18 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
           created_at: new Date().toISOString()
         };
         setMessages(prev => [...prev, aiMsg]);
+
+        // Save AI message to backend
+        fetch(`${API_BASE}/api/sessions/${session}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            role: 'model', 
+            content: result.answer, 
+            sources: result.sources 
+          })
+        }).catch(e => console.warn("Failed to save AI message:", e));
+
         if (result.showSummary) {
           setShowSummary(true);
         }
