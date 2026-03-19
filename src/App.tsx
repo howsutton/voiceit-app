@@ -406,6 +406,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const scrollRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const intentionalCloseRef = useRef(false);
 
   // Sync refs with state for use in callbacks
   useEffect(() => {
@@ -550,7 +551,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
           // Use a more natural prompt via text input to the live session
           try {
             liveSessionRef.current.sendRealtimeInput({
-              media: { data: btoa("I haven't heard from you in a while. Do you need any more assistance, or should I close this session?"), mimeType: 'text/plain' }
+              text: "I haven't heard from you in a while. Do you need any more assistance, or should I close this session?"
             });
             hasPromptedRef.current = true;
           } catch (e) {
@@ -563,6 +564,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         console.log("Session timed out due to inactivity - showing summary");
         setShowSummary(true);
         if (liveSessionRef.current) {
+          intentionalCloseRef.current = true;
           liveSessionRef.current.close();
           liveSessionRef.current = null;
         }
@@ -575,7 +577,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isPresent, sessionTimeout]);
+  }, [isPresent, sessionTimeout, showSummary]);
 
   // Presence Detection / Auto-start Loop
   useEffect(() => {
@@ -946,7 +948,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       try {
                         // Sending video frame for context
                         liveSessionRef.current.sendRealtimeInput({
-                          media: { data: base64Frame, mimeType: 'image/jpeg' }
+                          video: { data: base64Frame, mimeType: 'image/jpeg' }
                         });
                       } catch (e) {
                         console.error("Failed to send video frame:", e);
@@ -984,7 +986,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 if (s && isPresentRef.current && connectionStatusRef.current === 'connected') {
                   try {
                     s.sendRealtimeInput({
-                      media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
+                      audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
                     });
                   } catch (e) {
                     console.error("Failed to send audio input:", e);
@@ -1185,13 +1187,15 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
             }
           },
           onclose: () => {
-            console.log("Live session closed by server");
-            if (isPresentRef.current) {
+            console.log("Live session closed. Intentional:", intentionalCloseRef.current);
+            if (!intentionalCloseRef.current && isPresentRef.current) {
               console.warn("Unexpected session closure while user is present. Resetting state.");
               setConnectionStatus('idle');
               isPresentRef.current = false;
               setIsPresent(false);
             }
+            intentionalCloseRef.current = false;
+            liveSessionRef.current = null;
           },
           onerror: (err) => {
             console.error("Live session error:", err);
@@ -1285,6 +1289,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     setShowSummary(false);
     stopAudioPlayback();
     if (liveSessionRef.current) {
+      intentionalCloseRef.current = true;
       liveSessionRef.current.close();
       liveSessionRef.current = null;
     }
@@ -1302,6 +1307,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     setShowSummary(false);
     stopAudioPlayback();
     if (liveSessionRef.current) {
+      intentionalCloseRef.current = true;
       try { liveSessionRef.current.close(); } catch (e) {}
       liveSessionRef.current = null;
     }
