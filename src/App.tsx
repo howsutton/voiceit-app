@@ -146,23 +146,28 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
           )}
         </section>
 
-        <footer className="pt-12 border-t border-slate-200 text-center pb-12">
-          <div className="inline-flex items-center gap-2 text-slate-900 font-bold text-lg mb-2">
-            <Volume2 className="w-5 h-5 text-indigo-600" />
-            VoiceIt Assistant
-          </div>
-          <div className="mt-6 flex justify-center gap-6">
-            <div className="flex items-center gap-2 text-slate-400 text-xs">
-              <Phone className="w-3 h-3" />
-              869-467-1623
-            </div>
-            <div className="flex items-center gap-2 text-slate-400 text-xs">
-              <Mail className="w-3 h-3" />
-              info@lawcommission.gov.kn
-            </div>
-			<p className="text-slate-500 text-sm">Cherami Ltd. · 868-222-0011</p>
-          </div>
-        </footer>
+<footer className="pt-12 border-t border-slate-200 text-center pb-12">
+  <div className="inline-flex items-center gap-2 text-slate-900 font-bold text-lg mb-2">
+    <Volume2 className="w-5 h-5 text-indigo-600" />
+    VoiceIt Assistant
+  </div>
+
+  <div className="mt-6 flex justify-center gap-6">
+    <div className="flex items-center gap-2 text-slate-400 text-xs">
+      <Phone className="w-3 h-3" />
+      869-467-1623
+    </div>
+
+    <div className="flex items-center gap-2 text-slate-400 text-xs">
+      <Mail className="w-3 h-3" />
+      info@lawcommission.gov.kn
+    </div>
+  </div>
+
+  <p className="text-slate-500 text-sm mt-6">
+    Cherami Ltd. - 868-222-0011
+  </p>
+</footer>
       </div>
     </div>
   );
