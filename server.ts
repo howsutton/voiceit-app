@@ -1,4 +1,5 @@
 import express from "express";
+import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
 import path from "path";
@@ -8,6 +9,10 @@ import multer from "multer";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const upload = multer({ storage: multer.memoryStorage() });
+
+dotenv.config();
+
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "https://voiceit.cherami.com";
 
 async function startServer() {
   console.log("Starting VoiceIt Backend...");
@@ -219,6 +224,16 @@ async function startServer() {
     }
   });
 
+  app.get("/api/documents/:id", checkDb, (req, res) => {
+    try {
+      const doc = db.prepare("SELECT * FROM documents WHERE id = ?").get(req.params.id);
+      if (!doc) return res.status(404).json({ error: "Document not found" });
+      res.json(doc);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch document" });
+    }
+  });
+
   app.delete("/api/documents/:id", checkDb, (req, res) => {
     try {
       db.prepare("DELETE FROM documents WHERE id = ?").run(req.params.id);
@@ -336,6 +351,86 @@ async function startServer() {
       res.json({ id: msgId });
     } catch (err) {
       res.status(500).json({ error: "Failed to save message" });
+    }
+  });
+
+  app.post("/api/sessions/:id/complete", checkDb, (req, res) => {
+    try {
+      db.prepare("UPDATE sessions SET status = ?, last_activity = CURRENT_TIMESTAMP WHERE id = ?")
+        .run('ended', req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to complete session" });
+    }
+  });
+
+  app.get("/api/session/:id/summary", checkDb, (req, res) => {
+    try {
+      const session = db.prepare("SELECT * FROM sessions WHERE id = ?").get(req.params.id) as any;
+      if (!session) return res.status(404).json({ error: "Session summary is no longer available." });
+
+      const project = session.project_id
+        ? db.prepare("SELECT * FROM projects WHERE id = ?").get(session.project_id)
+        : null;
+      const documents = session.project_id
+        ? db.prepare("SELECT * FROM documents WHERE project_id = ?").all(session.project_id)
+        : [];
+      const docsByTitle = new Map((documents as any[]).map((doc: any) => [doc.title, doc]));
+      const messages = db.prepare("SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC").all(req.params.id) as any[];
+
+      const parsedMessages = messages.map((m: any) => ({
+        ...m,
+        sources: JSON.parse(m.sources_json || '[]')
+      }));
+
+      const items: any[] = [];
+      for (let i = 0; i < parsedMessages.length; i += 1) {
+        const current = parsedMessages[i];
+        if (current.role !== 'user') continue;
+        const answer = parsedMessages.slice(i + 1).find((m: any) => m.role === 'model');
+        if (!answer) continue;
+        const sources = (answer.sources || []).map((source: any) => {
+          const doc = docsByTitle.get(source.documentTitle);
+          return {
+            documentTitle: source.documentTitle,
+            pageNumber: source.pageNumber,
+            excerpt: source.excerpt,
+            documentId: doc?.id || null,
+            documentUrl: doc ? `${PUBLIC_BASE_URL}/document/${doc.id}` : null
+          };
+        });
+
+        items.push({
+          question: current.content,
+          answer: answer.content,
+          sources
+        });
+      }
+
+      const referencedDocuments = Array.from(new Set(items.flatMap((item: any) => item.sources.map((src: any) => src.documentId)).filter(Boolean)))
+        .map((docId: string) => {
+          const doc = (documents as any[]).find((d: any) => d.id === docId);
+          return doc ? {
+            id: doc.id,
+            title: doc.title,
+            pageCount: doc.page_count,
+            url: `${PUBLIC_BASE_URL}/document/${doc.id}`
+          } : null;
+        })
+        .filter(Boolean);
+
+      res.json({
+        sessionId: session.id,
+        status: session.status,
+        createdAt: session.created_at,
+        endedAt: session.last_activity,
+        project: project ? { id: (project as any).id, title: (project as any).title, description: (project as any).description } : null,
+        items,
+        documents: referencedDocuments
+      });
+    } catch (err) {
+      console.error("Failed to build session summary:", err);
+      res.status(500).json({ error: "Failed to load session summary" });
     }
   });
 
