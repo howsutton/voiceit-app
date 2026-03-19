@@ -1,7 +1,14 @@
 import { Type } from "@google/genai";
 
+export interface Account {
+  id: string;
+  name: string;
+  branding_json?: string;
+}
+
 export interface Project {
   id: string;
+  account_id?: string;
   title: string;
   description: string;
   instructions: string;
@@ -15,12 +22,44 @@ export interface Document {
   page_count: number;
 }
 
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'user';
+  account_id?: string;
+  account_name?: string;
+  last_active: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'model' | 'system';
   content: string;
+  sentiment?: 'positive' | 'neutral' | 'negative' | null;
   sources?: SourceCitation[];
   created_at: string;
+}
+
+export interface Analytics {
+  totalSessions: number;
+  totalMessages: number;
+  activeProjects: number;
+  totalDocuments: number;
+  totalUsers: number;
+  activeKiosks: number;
+  accuracy: number;
+  sessionVolume: number[];
+  sentimentTotals?: {
+    positive: number;
+    neutral: number;
+    negative: number;
+  };
+  distribution: {
+    correct: number;
+    clarifications: number;
+    unknowns: number;
+  };
 }
 
 export interface SourceCitation {

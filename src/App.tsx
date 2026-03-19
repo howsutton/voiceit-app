@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Mic, MicOff, Send, BookOpen, User, Settings, 
+  Mic, MicOff, Send, BookOpen, User as UserIcon, Settings, 
   LayoutDashboard, FileText, Activity, LogOut,
   ChevronRight, Volume2, Search, Info, Camera, Trash2,
-  Clock, RefreshCw, Plus, CheckCircle2, Phone, Mail, Printer
+  Clock, RefreshCw, Plus, CheckCircle2, Phone, Mail, Printer,
+  Building2, Smile, Meh, Frown
 } from 'lucide-react';
-import { Project, Message, Document } from './types';
+import { Project, Message, Document, Account, User as UserType, Analytics } from './types';
 import { generateGroundedAnswer } from './services/aiService';
 import { QRCodeCanvas } from 'qrcode.react';
 
@@ -1738,15 +1739,21 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
 
 const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { onLaunchKiosk: (project: Project) => void, sessionTimeout: number, setSessionTimeout: (val: number) => void }) => {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  const [analytics, setAnalytics] = useState<any>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [users, setUsers] = useState<UserType[]>([]);
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
+  const [accountAnalytics, setAccountAnalytics] = useState<Analytics | null>(null);
   const [showNewProject, setShowNewProject] = useState(false);
+  const [showNewAccount, setShowNewAccount] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [managingProject, setManagingProject] = useState<Project | null>(null);
   const [projectDocs, setProjectDocs] = useState<Document[]>([]);
-  const [newProject, setNewProject] = useState({ title: '', description: '', instructions: '' });
+  const [newProject, setNewProject] = useState({ title: '', description: '', instructions: '', account_id: 'acc_default' });
+  const [newAccount, setNewAccount] = useState({ name: '', branding_json: '{}' });
   const [uploadingDoc, setUploadingDoc] = useState({ title: '', content: '' });
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -1763,20 +1770,16 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   const fetchData = async () => {
-    console.log("fetchData: Starting Promise.all for projects, users, analytics...");
+    console.log("fetchData: Starting Promise.all for projects, users, analytics, accounts...");
     try {
-      const [pRes, uRes, aRes] = await Promise.all([
-        fetch(`${API_BASE}/api/projects`).then(r => { console.log("Projects response status:", r.status); return r; }),
-        fetch(`${API_BASE}/api/users`).then(r => { console.log("Users response status:", r.status); return r; }),
-        fetch(`${API_BASE}/api/analytics`).then(r => { console.log("Analytics response status:", r.status); return r; })
+      const [pRes, uRes, aRes, accRes] = await Promise.all([
+        fetch(`${API_BASE}/api/projects`).then(r => r),
+        fetch(`${API_BASE}/api/users`).then(r => r),
+        fetch(`${API_BASE}/api/analytics`).then(r => r),
+        fetch(`${API_BASE}/api/accounts`).then(r => r)
       ]);
       
-      if (!pRes.ok || !uRes.ok || !aRes.ok) {
-        console.error("API Error:", {
-          projects: pRes.status,
-          users: uRes.status,
-          analytics: aRes.status
-        });
+      if (!pRes.ok || !uRes.ok || !aRes.ok || !accRes.ok) {
         setAnalytics(null);
         return;
       }
@@ -1784,15 +1787,35 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
       const projects = await pRes.json();
       const users = await uRes.json();
       const analytics = await aRes.json();
+      const accounts = await accRes.json();
       
       setProjects(projects);
       setUsers(users);
       setAnalytics(analytics);
+      setAccounts(accounts);
     } catch (error) {
       console.error("Fetch data failed:", error);
       setAnalytics(null);
     }
   };
+
+  const fetchAccountAnalytics = async (accountId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/accounts/${accountId}/analytics`);
+      if (res.ok) {
+        const data = await res.json();
+        setAccountAnalytics(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch account analytics:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedAccount) {
+      fetchAccountAnalytics(selectedAccount.id);
+    }
+  }, [selectedAccount]);
 
   useEffect(() => {
     console.log("App: Fetching initial data using API_BASE:", API_BASE || "(relative)");
@@ -1818,7 +1841,7 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
         throw new Error(errorData.error || `Server returned ${res.status}`);
       }
       
-      setNewProject({ title: '', description: '', instructions: '' });
+      setNewProject({ title: '', description: '', instructions: '', account_id: 'acc_default' });
       setShowNewProject(false);
       setEditingProject(null);
       fetchData();
@@ -1828,10 +1851,41 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
     }
   };
 
+  const handleCreateAccount = async () => {
+    if (!newAccount.name) return;
+    try {
+      const res = await fetch(editingAccount ? `${API_BASE}/api/accounts/${editingAccount.id}` : `${API_BASE}/api/accounts`, {
+        method: editingAccount ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newAccount)
+      });
+      
+      if (!res.ok) throw new Error('Failed to save account');
+      
+      setNewAccount({ name: '', branding_json: '{}' });
+      setShowNewAccount(false);
+      setEditingAccount(null);
+      fetchData();
+    } catch (error) {
+      console.error("Failed to save account:", error);
+    }
+  };
+
   const handleEditProject = (proj: Project) => {
     setEditingProject(proj);
-    setNewProject({ title: proj.title, description: proj.description || '', instructions: proj.instructions || '' });
+    setNewProject({ 
+      title: proj.title, 
+      description: proj.description || '', 
+      instructions: proj.instructions || '',
+      account_id: proj.account_id || 'acc_default'
+    });
     setShowNewProject(true);
+  };
+
+  const handleEditAccount = (acc: Account) => {
+    setEditingAccount(acc);
+    setNewAccount({ name: acc.name, branding_json: acc.branding_json || '{}' });
+    setShowNewAccount(true);
   };
 
   const handleManageProject = async (proj: Project) => {
@@ -1949,15 +2003,16 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
         <nav className="flex-1 p-4 space-y-1">
           {[
             { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
+            { id: 'accounts', icon: Building2, label: 'Accounts' },
             { id: 'projects', icon: BookOpen, label: 'Projects' },
-            { id: 'users', icon: User, label: 'Users' },
+            { id: 'users', icon: UserIcon, label: 'Users' },
             { id: 'analytics', icon: Activity, label: 'Analytics' },
             { id: 'settings', icon: Settings, label: 'Settings' },
           ].map((item) => (
             <button
               key={item.id}
-              onClick={() => { setActiveTab(item.id); setManagingProject(null); setShowMobileMenu(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id && !managingProject ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}
+              onClick={() => { setActiveTab(item.id); setManagingProject(null); setSelectedAccount(null); setShowMobileMenu(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id && !managingProject && !selectedAccount ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}
             >
               <item.icon className="w-4 h-4" />
               {item.label}
@@ -2018,10 +2073,22 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
       <main className="flex-1 p-4 md:p-10 overflow-y-auto">
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-8 md:mb-10">
           <div>
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 capitalize">{managingProject ? 'Project Management' : activeTab}</h2>
-            <p className="text-slate-500 mt-1 text-sm md:text-base">Manage your enterprise knowledge and kiosk deployments.</p>
+            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 capitalize">
+              {managingProject ? 'Project Management' : selectedAccount ? `Account: ${selectedAccount.name}` : activeTab}
+            </h2>
+            <p className="text-slate-500 mt-1 text-sm md:text-base">
+              {selectedAccount ? 'View account-specific analytics and projects.' : 'Manage your enterprise knowledge and kiosk deployments.'}
+            </p>
           </div>
           <div className="flex gap-3 w-full sm:w-auto">
+            {activeTab === 'accounts' && !selectedAccount && (
+              <button 
+                onClick={() => setShowNewAccount(true)}
+                className="flex-1 sm:flex-none px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm"
+              >
+                New Account
+              </button>
+            )}
             <button className="flex-1 sm:flex-none px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Export Logs</button>
             <button 
               onClick={() => setShowNewProject(true)}
@@ -2119,6 +2186,74 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
               </div>
             </div>
           </div>
+        ) : selectedAccount ? (
+          <div className="space-y-8">
+            <div className="flex items-center gap-4 mb-8">
+              <button 
+                onClick={() => setSelectedAccount(null)} 
+                className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"
+              >
+                <ChevronRight className="w-6 h-6 rotate-180" />
+              </button>
+              <div>
+                <h3 className="text-2xl font-bold">{selectedAccount.name}</h3>
+                <p className="text-slate-500 text-sm">Account Overview & Scoped Analytics</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Total Sessions</p>
+                <h3 className="text-2xl font-bold text-slate-900">{accountAnalytics?.totalSessions || 0}</h3>
+              </div>
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Active Projects</p>
+                <h3 className="text-2xl font-bold text-slate-900">{accountAnalytics?.activeProjects || 0}</h3>
+              </div>
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Avg. Accuracy</p>
+                <h3 className="text-2xl font-bold text-slate-900">{accountAnalytics?.accuracy || 0}%</h3>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Sentiment Analysis</h3>
+                <div className="flex items-center justify-around py-4">
+                  <div className="text-center">
+                    <Smile className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                    <p className="text-2xl font-bold text-slate-900">{accountAnalytics?.sentimentTotals?.positive || 0}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Positive</p>
+                  </div>
+                  <div className="text-center">
+                    <Meh className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                    <p className="text-2xl font-bold text-slate-900">{accountAnalytics?.sentimentTotals?.neutral || 0}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Neutral</p>
+                  </div>
+                  <div className="text-center">
+                    <Frown className="w-8 h-8 text-red-500 mx-auto mb-2" />
+                    <p className="text-2xl font-bold text-slate-900">{accountAnalytics?.sentimentTotals?.negative || 0}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Negative</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Account Projects</h3>
+                <div className="space-y-4">
+                  {projects.filter(p => p.account_id === selectedAccount.id).map(proj => (
+                    <div key={proj.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+                      <span className="font-bold text-slate-800">{proj.title}</span>
+                      <button onClick={() => handleManageProject(proj)} className="text-indigo-600 text-xs font-bold hover:underline">Manage</button>
+                    </div>
+                  ))}
+                  {projects.filter(p => p.account_id === selectedAccount.id).length === 0 && (
+                    <p className="text-slate-400 italic text-sm">No projects assigned to this account.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="space-y-10">
             {activeTab === 'overview' && (
@@ -2144,6 +2279,28 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
                       <h3 className="text-xl md:text-2xl font-bold text-slate-900">{stat.value}</h3>
                     </div>
                   ))}
+                </div>
+
+                {/* Sentiment Overview */}
+                <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm mb-10">
+                  <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Global Sentiment Analysis</h3>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center p-4 bg-emerald-50 rounded-2xl">
+                      <Smile className="w-6 h-6 text-emerald-600 mx-auto mb-2" />
+                      <p className="text-xl font-bold text-emerald-900">{analytics?.sentimentTotals?.positive || 0}</p>
+                      <p className="text-[8px] font-bold text-emerald-600 uppercase tracking-widest">Positive</p>
+                    </div>
+                    <div className="text-center p-4 bg-amber-50 rounded-2xl">
+                      <Meh className="w-6 h-6 text-amber-600 mx-auto mb-2" />
+                      <p className="text-xl font-bold text-amber-900">{analytics?.sentimentTotals?.neutral || 0}</p>
+                      <p className="text-[8px] font-bold text-amber-600 uppercase tracking-widest">Neutral</p>
+                    </div>
+                    <div className="text-center p-4 bg-red-50 rounded-2xl">
+                      <Frown className="w-6 h-6 text-red-600 mx-auto mb-2" />
+                      <p className="text-xl font-bold text-red-900">{analytics?.sentimentTotals?.negative || 0}</p>
+                      <p className="text-[8px] font-bold text-red-600 uppercase tracking-widest">Negative</p>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Projects Grid */}
@@ -2197,6 +2354,47 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
               </>
             )}
 
+            {activeTab === 'accounts' && (
+              <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto shadow-sm">
+                <table className="w-full text-left min-w-[600px]">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Account Name</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Projects</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Users</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {accounts.map(acc => (
+                      <tr key={acc.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 font-bold text-xs">
+                              {acc.name[0]}
+                            </div>
+                            <span className="font-bold text-sm text-slate-900">{acc.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-xs text-slate-500">
+                          {projects.filter(p => p.account_id === acc.id).length} Projects
+                        </td>
+                        <td className="px-6 py-4 text-xs text-slate-500">
+                          {users.filter(u => u.account_id === acc.id).length} Users
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex justify-end gap-3">
+                            <button onClick={() => setSelectedAccount(acc)} className="text-indigo-600 font-bold text-xs hover:underline">View Dashboard</button>
+                            <button onClick={() => handleEditAccount(acc)} className="text-slate-600 font-bold text-xs hover:underline">Edit</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             {activeTab === 'projects' && (
               <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto shadow-sm">
                 <table className="w-full text-left min-w-[600px]">
@@ -2241,6 +2439,7 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
                     <tr>
                       <th className="px-4 md:px-6 py-4 text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider">User</th>
                       <th className="px-4 md:px-6 py-4 text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider">Email</th>
+                      <th className="px-4 md:px-6 py-4 text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider">Account</th>
                       <th className="px-4 md:px-6 py-4 text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider">Role</th>
                       <th className="px-4 md:px-6 py-4 text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Last Active</th>
                     </tr>
@@ -2250,11 +2449,12 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
                       <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 md:px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-400"><User className="w-4 h-4" /></div>
+                            <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-400"><UserIcon className="w-4 h-4" /></div>
                             <span className="font-bold text-xs md:text-sm text-slate-900">{user.name}</span>
                           </div>
                         </td>
                         <td className="px-4 md:px-6 py-4 text-[10px] md:text-xs text-slate-500">{user.email}</td>
+                        <td className="px-4 md:px-6 py-4 text-[10px] md:text-xs text-slate-500">{user.account_name || 'Global'}</td>
                         <td className="px-4 md:px-6 py-4">
                           <span className={`px-2 py-1 text-[8px] md:text-[10px] font-bold rounded-full uppercase tracking-wider ${user.role === 'admin' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
                             {user.role}
@@ -2433,6 +2633,18 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
               </div>
               <div className="p-6 md:p-8 space-y-6 overflow-y-auto flex-1">
                 <div>
+                  <label className="block text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Account Assignment</label>
+                  <select 
+                    value={newProject.account_id}
+                    onChange={e => setNewProject({...newProject, account_id: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 text-sm md:text-base"
+                  >
+                    {accounts.map(acc => (
+                      <option key={acc.id} value={acc.id}>{acc.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <label className="block text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Project Title</label>
                   <input 
                     type="text" 
@@ -2473,6 +2685,60 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
                   className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-colors text-sm md:text-base"
                 >
                   {editingProject ? 'Save Changes' : 'Create Project'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* New Account Modal */}
+      <AnimatePresence>
+        {showNewAccount && (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="p-6 md:p-8 border-b border-slate-100">
+                <h3 className="text-xl md:text-2xl font-bold">{editingAccount ? 'Edit Account' : 'Create New Account'}</h3>
+                <p className="text-slate-500 mt-1 text-xs md:text-sm">Manage enterprise organization details.</p>
+              </div>
+              <div className="p-6 md:p-8 space-y-6 overflow-y-auto flex-1">
+                <div>
+                  <label className="block text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Account Name</label>
+                  <input 
+                    type="text" 
+                    value={newAccount.name}
+                    onChange={e => setNewAccount({...newAccount, name: e.target.value})}
+                    placeholder="e.g. Acme Corp" 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 text-sm md:text-base" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Branding Config (JSON)</label>
+                  <textarea 
+                    value={newAccount.branding_json}
+                    onChange={e => setNewAccount({...newAccount, branding_json: e.target.value})}
+                    placeholder='{"primaryColor": "#4f46e5"}' 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 h-32 resize-none text-sm md:text-base font-mono" 
+                  />
+                </div>
+              </div>
+              <div className="p-6 md:p-8 bg-slate-50 flex flex-col sm:flex-row justify-end gap-3">
+                <button 
+                  onClick={() => { setShowNewAccount(false); setEditingAccount(null); }}
+                  className="px-6 py-2 text-slate-600 font-bold text-sm md:text-base"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleCreateAccount}
+                  className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-colors text-sm md:text-base"
+                >
+                  {editingAccount ? 'Save Changes' : 'Create Account'}
                 </button>
               </div>
             </motion.div>
