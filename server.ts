@@ -187,7 +187,10 @@ async function startServer() {
   app.get("/api/projects/:id/documents", checkDb, (req, res) => {
     try {
       const docs = db.prepare("SELECT * FROM documents WHERE project_id = ?").all(req.params.id) as any[];
-      console.log(`Retrieved ${docs.length} documents for project ${req.params.id}. Content lengths: ${docs.map(d => d.content?.length || 0).join(', ')}`);
+      console.log(`Retrieved ${docs.length} documents for project ${req.params.id}.`);
+      docs.forEach(d => {
+        console.log(`Document: ${d.title}, ID: ${d.id}, Content length: ${d.content?.length || 0}, Snippet: ${d.content?.substring(0, 50).replace(/\n/g, ' ')}...`);
+      });
       res.json(docs);
     } catch (err) {
       console.error("Failed to fetch documents:", err);
@@ -206,7 +209,19 @@ async function startServer() {
         const mammoth = require("mammoth");
         const WordExtractor = require("word-extractor");
         
-        const pdf = typeof pdfModule === 'function' ? pdfModule : pdfModule.default;
+        // pdf-parse often exports the function directly or as a default property
+        let pdf: any;
+        if (typeof pdfModule === 'function') {
+          pdf = pdfModule;
+        } else if (pdfModule && typeof pdfModule.default === 'function') {
+          pdf = pdfModule.default;
+        } else if (pdfModule && typeof pdfModule === 'object') {
+          // Some versions might export it differently
+          pdf = pdfModule;
+        }
+        
+        console.log("Resolved pdf function type:", typeof pdf);
+        
         const extractor = new WordExtractor();
 
         for (const file of files) {
@@ -218,9 +233,27 @@ async function startServer() {
           try {
             if (ext === '.pdf') {
               console.log(`Parsing PDF: ${title}, size: ${file.buffer.length} bytes`);
-              const data = await pdf(file.buffer);
-              content = data.text || "";
-              pageCount = data.numpages || 1;
+              if (typeof pdf !== 'function') {
+                // Fallback: try to require it again or use a different approach
+                console.error("pdf-parse is not a function, attempting alternative resolution");
+                const altPdf = require("pdf-parse/lib/pdf-parse.js");
+                if (typeof altPdf === 'function') {
+                  const data = await altPdf(file.buffer);
+                  content = data.text || "";
+                  pageCount = data.numpages || 1;
+                } else {
+                  throw new Error("Could not resolve pdf-parse as a function");
+                }
+              } else {
+                const data = await pdf(file.buffer);
+                console.log(`pdf-parse result for ${title}:`, { 
+                  hasText: !!data.text, 
+                  textLength: data.text?.length,
+                  numpages: data.numpages 
+                });
+                content = data.text || "";
+                pageCount = data.numpages || 1;
+              }
             } else if (ext === '.docx') {
               console.log(`Parsing DOCX: ${title}, size: ${file.buffer.length} bytes`);
               const result = await mammoth.extractRawText({ buffer: file.buffer });

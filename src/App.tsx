@@ -762,10 +762,15 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       
       console.log("Context text length:", contextText.length);
       if (contextText.length > 0) {
-        console.log("Context text snippet:", contextText.substring(0, 500) + "...");
+        console.log("Context text snippet:", contextText.substring(0, 1000) + "...");
       } else {
         console.warn("Context text is EMPTY! Check if documents have content.");
       }
+      
+      // Log individual document content lengths
+      docsToUse.forEach(d => {
+        console.log(`Document in context: ${d.title}, Content length: ${d.content?.length || 0}`);
+      });
 
       const showSourceFunctionDeclaration: FunctionDeclaration = {
         name: "showSource",
