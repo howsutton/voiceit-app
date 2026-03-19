@@ -9,7 +9,7 @@ export default defineConfig(({mode}) => {
     plugins: [react(), tailwindcss()],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-      'process.env.PUBLIC_BASE_URL': JSON.stringify(env.PUBLIC_BASE_URL || "https://voiceit.cherami.com"),
+      'import.meta.env.VITE_PUBLIC_BASE_URL': JSON.stringify(env.VITE_PUBLIC_BASE_URL || "https://voiceit.caribdesigns.com"),
     },
     resolve: {
       alias: {

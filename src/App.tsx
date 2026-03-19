@@ -140,7 +140,8 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
           </h2>
           {summary.sources && summary.sources.length > 0 ? (
             <div className="grid grid-cols-1 gap-4">
-              {summary.sources.map((doc: any, i: number) => (
+              {/* Deduplicate sources by title just in case */}
+              {Array.from(new Map(summary.sources.map((item: any) => [item.title, item])).values()).map((doc: any, i: number) => (
                 <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:border-indigo-300 transition-all shadow-sm">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-500 transition-all">
@@ -184,7 +185,7 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
 };
 
 const SummaryPopup = ({ sessionId, onClose, onPrint }: { sessionId: string, onClose: () => void, onPrint?: () => void }) => {
-  const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "https://voiceit.cherami.com";
+  const PUBLIC_BASE_URL = import.meta.env.VITE_PUBLIC_BASE_URL || "https://voiceit.caribdesigns.com";
   const summaryUrl = `${PUBLIC_BASE_URL}/session/${sessionId}`;
 
   const handlePrint = () => {
@@ -1278,19 +1279,30 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   };
 
   const handleReset = () => {
-    console.log("Resetting session and returning to presence detection...");
+    console.log("Full UI Reset triggered.");
     setShowSummary(false);
     stopAudioPlayback();
     if (liveSessionRef.current) {
-      liveSessionRef.current.close();
+      try { liveSessionRef.current.close(); } catch (e) {}
       liveSessionRef.current = null;
     }
-    // We don't stop the media stream tracks here as we want to keep the camera active for presence detection
-    isPresentRef.current = false;
+    
+    // Comprehensive state reset
     setIsPresent(false);
+    isPresentRef.current = false;
     setMessages([]);
-    setRemainingSeconds(sessionTimeout);
+    setTranscription('');
+    setInput('');
+    setIsListening(false);
+    setIsThinking(false);
+    setIsSpeaking(false);
+    setSelectedSource(null);
     setConnectionStatus('idle');
+    setRemainingSeconds(null);
+    lastSeenTimeRef.current = Date.now();
+    hasPromptedRef.current = false;
+    currentTurnRef.current = { userText: '', modelText: '', sources: [] };
+    setSession(null);
   };
 
   const handleSend = async (text: string) => {
@@ -1818,6 +1830,7 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
       onConfirm: async () => {
         await fetch(`${API_BASE}/api/documents/${docId}`, { method: 'DELETE' });
         if (managingProject) handleManageProject(managingProject);
+        fetchData();
         setConfirmModal(null);
       }
     });
@@ -1847,6 +1860,7 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
       setSelectedFiles([]);
       setShowUploadModal(false);
       handleManageProject(managingProject);
+      fetchData();
     } catch (error) {
       console.error("Upload failed:", error);
     } finally {

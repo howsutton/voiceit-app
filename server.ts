@@ -175,18 +175,25 @@ async function startServer() {
       const results = [];
 
       if (files && files.length > 0) {
+        // Use import instead of require for pdf-parse if possible, 
+        // but it's a CJS module, so createRequire is fine.
         const require = createRequire(import.meta.url);
-        const { PDFParse } = require("pdf-parse");
+        const pdf = require("pdf-parse");
 
         for (const file of files) {
           let title = file.originalname;
           let content = "";
           let pageCount = 1;
 
-          const parser = new PDFParse({ data: file.buffer });
-          const data = await parser.getText();
-          content = data.text;
-          pageCount = data.total;
+          try {
+            const data = await pdf(file.buffer);
+            content = data.text;
+            pageCount = data.numpages || 1;
+          } catch (pdfError) {
+            console.error(`Error parsing PDF ${file.originalname}:`, pdfError);
+            // Fallback to empty content if PDF parsing fails
+            content = "";
+          }
 
           if (!content || content.trim().length === 0) {
             console.warn(`Warning: No text content extracted from PDF: ${file.originalname}.`);
@@ -347,6 +354,8 @@ async function startServer() {
       const messages = db.prepare("SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC").all(req.params.id) as any[];
       
       const qa = [];
+      const usedSourceTitles = new Set<string>();
+      
       let i = 0;
       while (i < messages.length) {
         if (messages[i].role === 'user') {
@@ -357,13 +366,16 @@ async function startServer() {
           }
           
           if (j < messages.length) {
+            const sources = JSON.parse(messages[j].sources_json || '[]') as any[];
+            sources.forEach(s => {
+              if (s.documentTitle) usedSourceTitles.add(s.documentTitle);
+            });
+
             qa.push({
               q: messages[i].content,
               a: messages[j].content,
-              sources: JSON.parse(messages[j].sources_json || '[]')
+              sources
             });
-            // Move i to j to avoid re-pairing the same model response with multiple user messages
-            // (unless we want that, but strictly pairing is safer for "turns")
             i = j + 1;
           } else {
             i++;
@@ -373,7 +385,9 @@ async function startServer() {
         }
       }
 
-      const docs = db.prepare("SELECT id, title, page_count FROM documents WHERE project_id = ?").all(session.project_id);
+      // Filter documents to only include those used in the session
+      const allDocs = db.prepare("SELECT id, title, page_count FROM documents WHERE project_id = ?").all(session.project_id) as any[];
+      const docs = allDocs.filter(d => usedSourceTitles.has(d.title));
       
       res.json({
         sessionId: session.id,
