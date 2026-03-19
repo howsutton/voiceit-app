@@ -2515,7 +2515,7 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
                       <input 
                         type="file" 
                         className="hidden" 
-                        accept=".pdf"
+                        accept=".pdf,.doc,.docx"
                         multiple
                         onChange={e => {
                           const files = Array.from(e.target.files || []);

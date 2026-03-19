@@ -201,35 +201,50 @@ async function startServer() {
       const results = [];
 
       if (files && files.length > 0) {
-        // Use import instead of require for pdf-parse if possible, 
-        // but it's a CJS module, so createRequire is fine.
         const require = createRequire(import.meta.url);
         const pdfModule = require("pdf-parse");
+        const mammoth = require("mammoth");
+        const WordExtractor = require("word-extractor");
+        
         const pdf = typeof pdfModule === 'function' ? pdfModule : pdfModule.default;
-        console.log("pdf-parse library loaded. Type:", typeof pdf);
+        const extractor = new WordExtractor();
 
         for (const file of files) {
           let title = file.originalname;
           let content = "";
           let pageCount = 1;
+          const ext = path.extname(title).toLowerCase();
 
           try {
-            console.log(`Parsing PDF: ${file.originalname}, size: ${file.buffer.length} bytes`);
-            const data = await pdf(file.buffer);
-            content = data.text || "";
-            pageCount = data.numpages || 1;
-            
-            console.log(`Extracted ${content?.length || 0} characters from PDF: ${file.originalname}`);
-            if (content && content.length > 0) {
-              console.log(`Content snippet: ${content.substring(0, 100).replace(/\n/g, ' ')}...`);
+            if (ext === '.pdf') {
+              console.log(`Parsing PDF: ${title}, size: ${file.buffer.length} bytes`);
+              const data = await pdf(file.buffer);
+              content = data.text || "";
+              pageCount = data.numpages || 1;
+            } else if (ext === '.docx') {
+              console.log(`Parsing DOCX: ${title}, size: ${file.buffer.length} bytes`);
+              const result = await mammoth.extractRawText({ buffer: file.buffer });
+              content = result.value || "";
+              pageCount = 1; // Mammoth doesn't easily provide page count
+            } else if (ext === '.doc') {
+              console.log(`Parsing DOC: ${title}, size: ${file.buffer.length} bytes`);
+              const doc = await extractor.extract(file.buffer);
+              content = doc.getBody() || "";
+              pageCount = 1;
+            } else {
+              console.warn(`Unsupported file type: ${ext} for file ${title}`);
+              // Try as plain text if it's not a known binary format
+              content = file.buffer.toString('utf8');
             }
-          } catch (pdfError) {
-            console.error(`Error parsing PDF ${file.originalname}:`, pdfError);
+            
+            console.log(`Extracted ${content?.length || 0} characters from ${ext.toUpperCase()}: ${title}`);
+          } catch (parseError) {
+            console.error(`Error parsing ${ext.toUpperCase()} ${title}:`, parseError);
             content = "";
           }
 
           if (!content || content.trim().length === 0) {
-            console.warn(`Warning: No text content extracted from PDF: ${file.originalname}.`);
+            console.warn(`Warning: No text content extracted from ${title}.`);
           }
 
           const id = 'doc_' + Math.random().toString(36).substring(7);
