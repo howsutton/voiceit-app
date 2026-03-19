@@ -14,7 +14,7 @@ import { GoogleGenAI, Modality, LiveServerMessage, Type, FunctionDeclaration } f
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = ''; // Force relative paths for Cloud Run environment
 
 // --- Components ---
 
@@ -24,6 +24,7 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log("SummaryPage: Fetching summary for session:", sessionId, "using API_BASE:", API_BASE || "(relative)");
     const fetchSummary = async () => {
       try {
         setLoading(true);
@@ -373,6 +374,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const [isPresent, setIsPresent] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(true);
   const [session, setSession] = useState<string | null>(null);
+  const sessionRef = useRef<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [transcription, setTranscription] = useState('');
   const [input, setInput] = useState('');
@@ -678,12 +680,17 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         if (res.ok) {
           const data = await res.json();
           setSession(data.id);
+          sessionRef.current = data.id;
         } else {
-          setSession('local-' + Date.now());
+          const id = 'local-' + Date.now();
+          setSession(id);
+          sessionRef.current = id;
         }
       } catch (e) {
         console.warn("Backend session creation failed, using local session.");
-        setSession('local-' + Date.now());
+        const id = 'local-' + Date.now();
+        setSession(id);
+        sessionRef.current = id;
       }
 
       isPresentRef.current = true;
@@ -1076,12 +1083,13 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 setTranscription('');
                 
                 // Save the turn to backend if we have content
-                if (session && (currentTurnRef.current.userText || currentTurnRef.current.modelText)) {
+                const currentSession = sessionRef.current;
+                if (currentSession && (currentTurnRef.current.userText || currentTurnRef.current.modelText)) {
                   const saveTurn = async () => {
                     try {
                       // Save user message
                       if (currentTurnRef.current.userText) {
-                        await fetch(`${API_BASE}/api/sessions/${session}/messages`, {
+                        await fetch(`${API_BASE}/api/sessions/${currentSession}/messages`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ 
@@ -1093,7 +1101,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       
                       // Save model message with sources
                       if (currentTurnRef.current.modelText) {
-                        await fetch(`${API_BASE}/api/sessions/${session}/messages`, {
+                        await fetch(`${API_BASE}/api/sessions/${currentSession}/messages`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ 
@@ -1308,6 +1316,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     hasPromptedRef.current = false;
     currentTurnRef.current = { userText: '', modelText: '', sources: [] };
     setSession(null);
+    sessionRef.current = null;
   };
 
   const handleSend = async (text: string) => {
@@ -1749,11 +1758,12 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   const fetchData = async () => {
+    console.log("fetchData: Starting Promise.all for projects, users, analytics...");
     try {
       const [pRes, uRes, aRes] = await Promise.all([
-        fetch(`${API_BASE}/api/projects`),
-        fetch(`${API_BASE}/api/users`),
-        fetch(`${API_BASE}/api/analytics`)
+        fetch(`${API_BASE}/api/projects`).then(r => { console.log("Projects response status:", r.status); return r; }),
+        fetch(`${API_BASE}/api/users`).then(r => { console.log("Users response status:", r.status); return r; }),
+        fetch(`${API_BASE}/api/analytics`).then(r => { console.log("Analytics response status:", r.status); return r; })
       ]);
       
       if (!pRes.ok || !uRes.ok || !aRes.ok) {
@@ -1780,6 +1790,12 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
   };
 
   useEffect(() => {
+    console.log("App: Fetching initial data using API_BASE:", API_BASE || "(relative)");
+    fetch(`${API_BASE}/api/health`)
+      .then(res => res.json())
+      .then(data => console.log("Server Health Check:", data))
+      .catch(err => console.error("Server Health Check Failed:", err));
+
     fetchData();
   }, []);
 

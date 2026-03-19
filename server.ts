@@ -1,20 +1,34 @@
 import express from "express";
+import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import multer from "multer";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const upload = multer({ storage: multer.memoryStorage() });
 
 async function startServer() {
   console.log("Starting VoiceIt Backend...");
+  console.log("Environment Variables:", {
+    NODE_ENV: process.env.NODE_ENV,
+    VITE_API_URL: process.env.VITE_API_URL,
+    VITE_PUBLIC_BASE_URL: process.env.VITE_PUBLIC_BASE_URL
+  });
   
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
+  app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  }));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
@@ -100,19 +114,21 @@ async function startServer() {
   }
 
   // API Routes
-  app.use((req, res, next) => {
-    if (req.path.startsWith('/api')) {
-      console.log(`[API Request] ${req.method} ${req.path}`);
-    }
-    next();
-  });
-
   app.get("/api/health", (req, res) => {
+    console.log("[API] Health check requested");
     res.json({ 
       status: "ok", 
-      service: "VoiceIt Backend",
+      mode: process.env.NODE_ENV, 
+      timestamp: new Date().toISOString(),
       database: db ? "connected" : "disconnected"
     });
+  });
+
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      console.log(`[API Request] ${req.method} ${req.path} - ${new Date().toISOString()}`);
+    }
+    next();
   });
 
   // Middleware to check database connection
@@ -198,16 +214,20 @@ async function startServer() {
 
           try {
             console.log(`Parsing PDF: ${file.originalname}, size: ${file.buffer.length} bytes`);
-            const data = await pdf(file.buffer);
-            content = data.text || "";
-            pageCount = data.numpages || 1;
-            console.log(`Extracted ${content.length} characters from PDF: ${file.originalname}`);
-            if (content.length > 0) {
+            const instance = new pdf.PDFParse(file.buffer);
+            if (typeof instance.load === 'function') {
+              await instance.load();
+            }
+            content = await instance.getText();
+            const info = await instance.getInfo();
+            pageCount = info?.pages || info?.numpages || 1;
+            
+            console.log(`Extracted ${content?.length || 0} characters from PDF: ${file.originalname}`);
+            if (content && content.length > 0) {
               console.log(`Content snippet: ${content.substring(0, 100).replace(/\n/g, ' ')}...`);
             }
           } catch (pdfError) {
             console.error(`Error parsing PDF ${file.originalname}:`, pdfError);
-            // Fallback to empty content if PDF parsing fails
             content = "";
           }
 
@@ -372,33 +392,41 @@ async function startServer() {
       const qa = [];
       const usedSourceTitles = new Set<string>();
       
-      let i = 0;
-      while (i < messages.length) {
-        if (messages[i].role === 'user') {
-          // Find the next model response
-          let j = i + 1;
-          while (j < messages.length && messages[j].role !== 'model') {
-            j++;
-          }
-          
-          if (j < messages.length) {
-            const sources = JSON.parse(messages[j].sources_json || '[]') as any[];
-            sources.forEach(s => {
-              if (s.documentTitle) usedSourceTitles.add(s.documentTitle);
-            });
+      let currentTurn: any = null;
 
-            qa.push({
-              q: messages[i].content,
-              a: messages[j].content,
-              sources
-            });
-            i = j + 1;
-          } else {
-            i++;
+      for (const msg of messages) {
+        if (msg.role === 'user') {
+          if (currentTurn) {
+            qa.push(currentTurn);
           }
-        } else {
-          i++;
+          currentTurn = {
+            q: msg.content,
+            a: '',
+            sources: []
+          };
+        } else if (msg.role === 'model') {
+          if (!currentTurn) {
+            currentTurn = { q: '', a: '', sources: [] };
+          }
+          currentTurn.a += (currentTurn.a ? '\n' : '') + msg.content;
+          const sources = JSON.parse(msg.sources_json || '[]') as any[];
+          sources.forEach(s => {
+            if (s.documentTitle) {
+              usedSourceTitles.add(s.documentTitle);
+              // Avoid duplicate sources in the same turn
+              if (!currentTurn.sources.some((existing: any) => 
+                existing.documentTitle === s.documentTitle && 
+                existing.pageNumber === s.pageNumber
+              )) {
+                currentTurn.sources.push(s);
+              }
+            }
+          });
         }
+      }
+      
+      if (currentTurn) {
+        qa.push(currentTurn);
       }
 
       // Filter documents to only include those used in the session
@@ -450,11 +478,11 @@ async function startServer() {
   }
 
   // Vite middleware
-  const isProduction = process.env.NODE_ENV !== "development";
+  const isProduction = process.env.NODE_ENV === "production";
   
   if (!isProduction) {
     try {
-      console.log("Starting Vite in development mode...");
+      console.log("Starting Vite in development mode (NODE_ENV=" + process.env.NODE_ENV + ")...");
       const vite = await createViteServer({
         server: { middlewareMode: true },
         appType: "spa",
@@ -464,7 +492,7 @@ async function startServer() {
       console.error("Vite middleware failed to load:", err);
     }
   } else {
-    console.log("Serving static files from dist...");
+    console.log("Serving static files from dist (NODE_ENV=production)...");
     const distPath = path.join(__dirname, "dist");
     app.use(express.static(distPath));
     
