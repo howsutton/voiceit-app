@@ -151,7 +151,6 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
             <Volume2 className="w-5 h-5 text-indigo-600" />
             VoiceIt Assistant
           </div>
-          <p className="text-slate-500 text-sm">Cherami Ltd. · 868-222-0011</p>
           <div className="mt-6 flex justify-center gap-6">
             <div className="flex items-center gap-2 text-slate-400 text-xs">
               <Phone className="w-3 h-3" />
@@ -161,6 +160,7 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
               <Mail className="w-3 h-3" />
               info@lawcommission.gov.kn
             </div>
+			<p className="text-slate-500 text-sm">Cherami Ltd. · 868-222-0011</p>
           </div>
         </footer>
       </div>
@@ -169,7 +169,7 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
 };
 
 const SummaryPopup = ({ sessionId, onClose, onPrint }: { sessionId: string, onClose: () => void, onPrint?: () => void }) => {
-  const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "https://voiceit.cherami.com";
+  const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "https://voiceit.caribdeasigns.com";
   const summaryUrl = `${PUBLIC_BASE_URL}/session/${sessionId}`;
 
   const handlePrint = () => {
