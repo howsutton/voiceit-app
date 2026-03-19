@@ -214,13 +214,9 @@ async function startServer() {
 
           try {
             console.log(`Parsing PDF: ${file.originalname}, size: ${file.buffer.length} bytes`);
-            const instance = new pdf.PDFParse(file.buffer);
-            if (typeof instance.load === 'function') {
-              await instance.load();
-            }
-            content = await instance.getText();
-            const info = await instance.getInfo();
-            pageCount = info?.pages || info?.numpages || 1;
+            const data = await pdf(file.buffer);
+            content = data.text;
+            pageCount = data.numpages || 1;
             
             console.log(`Extracted ${content?.length || 0} characters from PDF: ${file.originalname}`);
             if (content && content.length > 0) {
