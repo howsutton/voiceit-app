@@ -27,8 +27,6 @@ export interface SourceCitation {
   documentTitle: string;
   pageNumber: number;
   excerpt: string;
-  documentId?: string | null;
-  documentUrl?: string | null;
 }
 
 export const AI_CONFIG = {

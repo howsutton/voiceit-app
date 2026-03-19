@@ -15,85 +15,6 @@ import { GoogleGenAI, Modality, LiveServerMessage, Type, FunctionDeclaration } f
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
-const PUBLIC_BASE_URL = (import.meta.env.VITE_PUBLIC_BASE_URL || 'https://voiceit.cherami.com').replace(/\/$/, '');
-
-
-
-const VoiceOrb = ({ 
-  isSpeaking, 
-  isThinking, 
-  onClick 
-}: { 
-  isSpeaking: boolean; 
-  isThinking: boolean; 
-  onClick?: () => void; 
-}) => {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`relative flex items-center justify-center rounded-full transition-all duration-300 ${
-        onClick ? 'cursor-pointer' : 'cursor-default'
-      }`}
-      aria-label="Voice assistant status"
-    >
-      <motion.div
-        animate={{
-          scale: isSpeaking ? [1, 1.08, 1] : isThinking ? [1, 1.04, 1] : 1,
-          opacity: isSpeaking ? [0.35, 0.6, 0.35] : isThinking ? [0.2, 0.35, 0.2] : 0.18,
-        }}
-        transition={{
-          repeat: Infinity,
-          duration: isSpeaking ? 1.2 : isThinking ? 1.8 : 2.4,
-          ease: 'easeInOut',
-        }}
-        className="absolute w-56 h-56 md:w-80 md:h-80 rounded-full bg-blue-500 blur-3xl"
-      />
-
-      <motion.div
-        animate={{
-          scale: isSpeaking ? [1, 1.06, 1] : isThinking ? [1, 1.03, 1] : 1,
-          borderColor: isSpeaking
-            ? ['rgba(96,165,250,0.65)', 'rgba(59,130,246,1)', 'rgba(96,165,250,0.65)']
-            : isThinking
-            ? ['rgba(148,163,184,0.35)', 'rgba(96,165,250,0.55)', 'rgba(148,163,184,0.35)']
-            : 'rgba(255,255,255,0.12)',
-        }}
-        transition={{
-          repeat: Infinity,
-          duration: isSpeaking ? 0.9 : isThinking ? 1.6 : 2.5,
-          ease: 'easeInOut',
-        }}
-        className="relative w-40 h-40 md:w-56 md:h-56 rounded-full border bg-white/[0.03] backdrop-blur-xl shadow-2xl flex items-center justify-center"
-      >
-        <motion.div
-          animate={{
-            scale: isSpeaking ? [1, 1.12, 0.98, 1.08, 1] : isThinking ? [1, 1.04, 1] : 1,
-            backgroundColor: isSpeaking
-              ? ['rgb(37 99 235)', 'rgb(59 130 246)', 'rgb(29 78 216)', 'rgb(59 130 246)', 'rgb(37 99 235)']
-              : isThinking
-              ? ['rgb(71 85 105)', 'rgb(59 130 246)', 'rgb(71 85 105)']
-              : 'rgb(37 99 235)',
-          }}
-          transition={{
-            repeat: Infinity,
-            duration: isSpeaking ? 0.8 : isThinking ? 1.8 : 2.5,
-            ease: 'easeInOut',
-          }}
-          className="w-24 h-24 md:w-32 md:h-32 rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(59,130,246,0.35)]"
-        >
-          {isSpeaking ? (
-            <Volume2 className="w-10 h-10 md:w-14 md:h-14 text-white" />
-          ) : isThinking ? (
-            <RefreshCw className="w-10 h-10 md:w-14 md:h-14 text-white animate-spin" />
-          ) : (
-            <Mic className="w-10 h-10 md:w-14 md:h-14 text-white" />
-          )}
-        </motion.div>
-      </motion.div>
-    </button>
-  );
-};
 
 // --- Components ---
 
@@ -103,30 +24,28 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    fetch(`${API_BASE}/api/session/${sessionId}/summary`)
-      .then(async (res) => {
+    const fetchSummary = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/summary`);
         if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || 'This session summary is no longer available.');
+          throw new Error("Session not found or expired.");
         }
-        return res.json();
-      })
-      .then((data) => {
-        if (!active) return;
+        const data = await res.json();
         setSummary(data);
-        setError(null);
-      })
-      .catch((err) => {
-        if (!active) return;
-        setError(err.message || 'This session summary is no longer available.');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+      } catch (err: any) {
+        console.error("Failed to fetch summary:", err);
+        setError(err.message || "An unexpected error occurred.");
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    return () => { active = false; };
+    if (sessionId) {
+      fetchSummary();
+    } else {
+      setLoading(false);
+    }
   }, [sessionId]);
 
   if (loading) {
@@ -142,11 +61,14 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
 
   if (error || !summary) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-        <div className="text-center p-8 bg-white rounded-3xl shadow-xl border border-slate-200 max-w-lg">
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">Session summary unavailable</h1>
-          <p className="text-slate-500">{error || 'This session summary is no longer available.'}</p>
-          <p className="text-slate-400 text-sm mt-4">Please visit the VoiceIt kiosk again if you need further assistance.</p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center p-8 bg-white rounded-3xl shadow-xl border border-slate-200 max-w-md">
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Session Not Found</h1>
+          <p className="text-slate-500">{error || "The session summary you are looking for is no longer available or the link is invalid."}</p>
+          <div className="mt-6 pt-6 border-t border-slate-100">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Contact Support</p>
+            <p className="text-slate-600 text-sm">info@lawcommission.gov.kn</p>
+          </div>
         </div>
       </div>
     );
@@ -154,99 +76,73 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 md:p-12 font-sans">
-      <div className="max-w-4xl mx-auto">
-        <header className="mb-12 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+      <div className="max-w-3xl mx-auto">
+        <header className="mb-12 flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">Session Summary</h1>
-            <p className="text-slate-500">{summary.project?.title || 'VoiceIt Assistant Interaction'}</p>
-            <p className="text-xs text-slate-400 mt-2">Session ID: {summary.sessionId}</p>
+            <p className="text-slate-500">VoiceIt Assistant Interaction • {new Date(summary.timestamp).toLocaleDateString()}</p>
           </div>
           <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-100">
             <Volume2 className="w-6 h-6" />
           </div>
         </header>
 
-        <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 md:p-8 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-slate-400 uppercase tracking-wider text-xs font-bold mb-1">Started</p>
-              <p className="text-slate-700">{summary.createdAt ? new Date(summary.createdAt).toLocaleString() : 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-slate-400 uppercase tracking-wider text-xs font-bold mb-1">Status</p>
-              <p className="text-slate-700 capitalize">{summary.status || 'ended'}</p>
-            </div>
-          </div>
-          <p className="text-slate-400 text-xs mt-4">Session summaries may only be available for a limited time on the current hosting plan.</p>
-        </section>
-
         <section className="space-y-8 mb-12">
           <h2 className="text-xl font-bold text-slate-800 border-b border-slate-200 pb-2 flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-            Questions and Answers
+            Questions & Answers
           </h2>
-          {summary.items?.length > 0 ? summary.items.map((item: any, index: number) => (
-            <div key={index} className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-100">
-              <div className="mb-6">
-                <p className="text-indigo-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-3">Question</p>
-                <p className="text-slate-900 font-bold text-xl leading-tight">{item.question}</p>
-              </div>
-              <div className="pl-4 border-l-4 border-emerald-500 bg-emerald-50/30 p-4 rounded-r-2xl mb-6">
-                <p className="text-emerald-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-2">VoiceIt Answer</p>
-                <p className="text-slate-700 leading-relaxed text-lg whitespace-pre-wrap">{item.answer}</p>
-              </div>
-              <div>
-                <p className="text-slate-400 uppercase tracking-wider text-xs font-bold mb-3">Sources</p>
-                {item.sources?.length ? (
-                  <div className="space-y-3">
-                    {item.sources.map((src: any, srcIndex: number) => (
-                      <div key={srcIndex} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                          <div>
-                            <p className="font-semibold text-slate-800">{src.documentTitle}</p>
-                            <p className="text-xs text-slate-400">Page {src.pageNumber || 'N/A'}</p>
-                          </div>
-                          {src.documentUrl ? (
-                            <a href={src.documentUrl} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 transition-colors">
-                              <FileText className="w-4 h-4" />
-                              Open Source Document
-                            </a>
-                          ) : null}
+          {summary.qa && summary.qa.length > 0 ? (
+            summary.qa.map((item: any, i: number) => (
+              <div key={i} className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-100 hover:border-indigo-100 transition-all">
+                <div className="mb-6">
+                  <p className="text-indigo-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-3">Question</p>
+                  <p className="text-slate-900 font-bold text-xl md:text-2xl leading-tight">{item.q}</p>
+                </div>
+                <div className="pl-4 border-l-4 border-emerald-500 bg-emerald-50/30 p-4 rounded-r-2xl">
+                  <p className="text-emerald-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-2">VoiceIt Answer</p>
+                  <p className="text-slate-700 leading-relaxed text-lg">{item.a}</p>
+                  {item.sources && item.sources.length > 0 && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {item.sources.map((src: any, si: number) => (
+                        <div key={si} className="text-[10px] bg-white/50 px-2 py-1 rounded border border-emerald-100 text-emerald-700 flex items-center gap-1">
+                          <BookOpen className="w-3 h-3" />
+                          {src.documentTitle} (p. {src.pageNumber})
                         </div>
-                        {src.excerpt ? <p className="mt-3 text-slate-600 italic">"{src.excerpt}"</p> : null}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-slate-400 italic">No source links were recorded for this answer.</p>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )) : <p className="text-slate-400 italic">No questions were recorded in this session.</p>}
+            ))
+          ) : (
+            <p className="text-slate-400 italic">No questions were recorded in this session.</p>
+          )}
         </section>
 
         <section className="space-y-4 mb-12">
           <h2 className="text-xl font-bold text-slate-800 border-b border-slate-200 pb-2 flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-indigo-500" />
-            Referenced Documents
+            Source Documents
           </h2>
-          {summary.documents?.length ? (
+          {summary.sources && summary.sources.length > 0 ? (
             <div className="grid grid-cols-1 gap-4">
-              {summary.documents.map((doc: any) => (
-                <a key={doc.id} href={doc.url} className="bg-white p-6 rounded-2xl border border-slate-200 flex items-center justify-between gap-4 hover:border-indigo-300 transition-all shadow-sm">
-                  <div>
-                    <span className="font-bold text-slate-800 block">{doc.title}</span>
-                    <span className="text-xs text-slate-400 uppercase tracking-wider">{doc.pageCount} Pages</span>
+              {summary.sources.map((doc: any, i: number) => (
+                <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:border-indigo-300 transition-all shadow-sm">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-500 transition-all">
+                      <FileText className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-800 block">{doc.title}</span>
+                      <span className="text-xs text-slate-400 uppercase tracking-wider">{doc.page_count} Pages</span>
+                    </div>
                   </div>
-                  <div className="inline-flex items-center gap-2 text-indigo-600 font-semibold">
-                    <FileText className="w-4 h-4" />
-                    Open
-                  </div>
-                </a>
+                </div>
               ))}
             </div>
           ) : (
-            <p className="text-slate-400 italic">No source documents were referenced in this session.</p>
+            <p className="text-slate-400 italic">No source documents were referenced or available for download.</p>
           )}
         </section>
 
@@ -255,7 +151,7 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
             <Volume2 className="w-5 h-5 text-indigo-600" />
             VoiceIt Assistant
           </div>
-          <p className="text-slate-500 text-sm">Powered by: Cherami Ltd. - 868-222-0011</p>
+          <p className="text-slate-500 text-sm">Cherami Ltd. · 868-222-0011</p>
           <div className="mt-6 flex justify-center gap-6">
             <div className="flex items-center gap-2 text-slate-400 text-xs">
               <Phone className="w-3 h-3" />
@@ -272,87 +168,54 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
   );
 };
 
-const DocumentPage = ({ documentId }: { documentId: string }) => {
-  const [document, setDocument] = useState<Document | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+const SummaryPopup = ({ sessionId, onClose, onPrint }: { sessionId: string, onClose: () => void, onPrint?: () => void }) => {
+  const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "https://voiceit.cherami.com";
+  const summaryUrl = `${PUBLIC_BASE_URL}/session/${sessionId}`;
 
-  useEffect(() => {
-    let active = true;
-    fetch(`${API_BASE}/api/documents/${documentId}`)
-      .then(async (res) => {
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || 'Document not found.');
-        }
-        return res.json();
-      })
-      .then((data) => { if (active) setDocument(data); })
-      .catch((err) => { if (active) setError(err.message || 'Document not found.'); })
-      .finally(() => { if (active) setLoading(false); });
-
-    return () => { active = false; };
-  }, [documentId]);
-
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><RefreshCw className="w-8 h-8 text-indigo-600 animate-spin" /></div>;
-
-  if (error || !document) {
-    return <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6"><div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm max-w-lg w-full text-center"><h1 className="text-2xl font-bold text-slate-900 mb-2">Document unavailable</h1><p className="text-slate-500">{error || 'Document not found.'}</p></div></div>;
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-50 p-6 md:p-12">
-      <div className="max-w-4xl mx-auto bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-6 md:p-8 border-b border-slate-100 flex justify-between items-center gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">{document.title}</h1>
-            <p className="text-slate-500 text-sm mt-1">{document.page_count} Pages</p>
-          </div>
-          <a href={`${PUBLIC_BASE_URL}`} className="px-4 py-2 rounded-xl bg-slate-900 text-white font-semibold text-sm">Back to VoiceIt</a>
-        </div>
-        <div className="p-6 md:p-8 bg-slate-50">
-          <pre className="whitespace-pre-wrap font-sans text-sm text-slate-700 leading-relaxed bg-white rounded-2xl border border-slate-200 p-6">{document.content}</pre>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const SummaryPopup = ({ sessionId, messages, documents, projectId, onClose }: { sessionId: string | null, messages: Message[], documents: Document[], projectId: string, onClose: () => void }) => {
-  const safeSessionId = sessionId || `local-${Date.now()}`;
-  const summaryUrl = `${PUBLIC_BASE_URL}/session/${safeSessionId}`;
-
-  useEffect(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
-
-    recognition.onresult = (event: any) => {
-      const transcript = Array.from(event.results).map((result: any) => result[0]?.transcript || '').join(' ').toLowerCase();
-      if (transcript.includes('print receipt') || transcript.trim().endsWith('print')) {
-        window.print();
-      }
-      if (transcript.includes('close receipt') || transcript.includes('close') || transcript.includes('done')) {
-        onClose();
-      }
-    };
-
-    try { recognition.start(); } catch (error) {}
-    return () => { try { recognition.stop(); } catch (error) {} };
-  }, [onClose]);
+  const handlePrint = () => {
+    if (onPrint) onPrint();
+    // Ensure the print area is ready and then trigger print
+    setTimeout(() => {
+      window.print();
+    }, 100);
+  };
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+      {/* Printable Area (Hidden in UI, visible in print) */}
+      <div id="print-area" className="hidden">
+        <div style={{ textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>
+          <h1 style={{ fontSize: '18px', margin: '0' }}>VoiceIt Session</h1>
+          <p style={{ fontSize: '10px', color: '#666', margin: '2px 0' }}>Thank you for visiting</p>
+        </div>
+        
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px 0' }}>
+          <p style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '10px' }}>Scan for Session Summary</p>
+          <QRCodeCanvas value={summaryUrl} size={150} level="H" includeMargin={false} />
+          <p style={{ fontSize: '9px', color: '#888', marginTop: '10px', textAlign: 'center' }}>Scan this code to view your questions, answers, and download source documents.</p>
+        </div>
+
+        <div style={{ borderTop: '1px solid #eee', paddingTop: '10px', fontSize: '8px', color: '#444' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+            <span>Tel: 869-467-1623</span>
+            <span>info@lawcommission.gov.kn</span>
+          </div>
+          <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#000' }}>
+            Powered by Cherami Ltd. - 868-222-0011
+          </div>
+        </div>
+      </div>
+
       <style>{`
-        @page { size: 4in 4in; margin: 0.2in; }
         @media print {
-          body * { visibility: hidden !important; }
-          #voiceit-receipt-print, #voiceit-receipt-print * { visibility: visible !important; }
-          #voiceit-receipt-print {
+          body * {
+            visibility: hidden !important;
+          }
+          #print-area, #print-area * {
+            visibility: visible !important;
+            display: flex !important;
+          }
+          #print-area {
             position: fixed !important;
             left: 0 !important;
             top: 0 !important;
@@ -361,58 +224,131 @@ const SummaryPopup = ({ sessionId, messages, documents, projectId, onClose }: { 
             padding: 0.2in !important;
             background: white !important;
             color: black !important;
-            display: flex !important;
+            font-family: sans-serif !important;
             flex-direction: column !important;
             justify-content: space-between !important;
             z-index: 9999 !important;
           }
-          .no-print { display: none !important; }
+          .no-print {
+            display: none !important;
+          }
         }
       `}</style>
-
-      <div id="voiceit-receipt-print" className="hidden">
-        <div style={{ textAlign: 'center' }}>
-          <h1 style={{ fontSize: '18px', margin: 0 }}>Thank you for using the VoiceIt application.</h1>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-          <QRCodeCanvas value={summaryUrl} size={150} level="H" includeMargin />
-          <p style={{ fontSize: '9px', textAlign: 'center', wordBreak: 'break-all' }}>{summaryUrl}</p>
-        </div>
-        <div style={{ textAlign: 'center', fontSize: '10px', lineHeight: 1.5 }}>
-          <div>Tel: 869-467-1623</div>
-          <div>Email: info@lawcommission.gov.kn</div>
-          <div style={{ marginTop: '8px', fontWeight: 700 }}>Powered by: Cherami Ltd. - 868-222-0011</div>
-        </div>
-      </div>
-
-      <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="bg-white rounded-[40px] p-8 md:p-12 max-w-2xl w-full text-center shadow-2xl relative overflow-hidden no-print">
-        <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-indigo-100 blur-3xl" />
-        <div className="absolute -bottom-16 -left-16 w-40 h-40 rounded-full bg-sky-100 blur-3xl" />
-        <div className="relative">
-          <h2 className="text-3xl font-bold text-slate-900 mb-3">Thank you for using the VoiceIt application.</h2>
-          <p className="text-slate-500 max-w-xl mx-auto mb-8">Scan the QR code below to open your session summary with the questions asked, answers given, and links to the referenced source documents.</p>
-          <div className="flex justify-center mb-4">
-            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
-              <QRCodeCanvas value={summaryUrl} size={220} level="H" includeMargin />
+      
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        className="bg-white rounded-[40px] p-8 md:p-12 max-w-2xl w-full text-center shadow-2xl relative overflow-hidden no-print"
+      >
+        {/* UI Content */}
+        <div className="no-print">
+          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-600 via-indigo-500 to-emerald-400" />
+          
+          <div className="mb-6 inline-flex items-center justify-center w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl">
+            <CheckCircle2 className="w-8 h-8" />
+          </div>
+          
+          <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">Thank You!</h2>
+          <p className="text-slate-500 text-lg mb-8">Thank you for using the VoiceIt application.</p>
+          
+          <div className="flex flex-col items-center justify-center mb-10">
+            <div className="p-6 bg-white rounded-3xl border-2 border-slate-100 shadow-xl">
+              <QRCodeCanvas value={summaryUrl} size={180} level="H" includeMargin={true} />
+            </div>
+            <p className="mt-4 text-slate-400 text-[10px] font-bold uppercase tracking-[0.2em]">Scan to save your session summary</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10 text-left">
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Contact Information</p>
+              <div className="flex items-center gap-2 text-slate-700">
+                <Phone className="w-4 h-4 text-slate-300" />
+                <span className="font-medium">869-467-1623</span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-700">
+                <Mail className="w-4 h-4 text-slate-300" />
+                <span className="font-medium text-sm">info@lawcommission.gov.kn</span>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Powered By</p>
+              <div className="flex items-center gap-2 text-slate-900">
+                <span className="font-bold">Cherami Ltd.</span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-700">
+                <Phone className="w-4 h-4 text-slate-300" />
+                <span className="font-medium">868-222-0011</span>
+              </div>
             </div>
           </div>
-          <p className="text-xs text-slate-400 break-all mb-8">{summaryUrl}</p>
-          <div className="space-y-2 text-slate-700 mb-8">
-            <p className="font-semibold">Tel: 869-467-1623</p>
-            <p className="font-semibold">Email: info@lawcommission.gov.kn</p>
-            <p className="text-sm text-slate-500 pt-2">Powered by: Cherami Ltd. - 868-222-0011</p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button onClick={() => window.print()} className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-slate-900 text-white font-bold hover:bg-slate-800 transition-colors">
+          
+          <div className="flex flex-col sm:flex-row gap-4">
+            <button 
+              onClick={handlePrint}
+              className="flex-1 py-5 bg-white border-2 border-slate-200 text-slate-900 rounded-2xl font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+            >
               <Printer className="w-5 h-5" />
               Print Receipt
             </button>
-            <button onClick={onClose} className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition-colors">
-              Close Receipt
+            <button 
+              onClick={onClose}
+              className="flex-1 py-5 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 active:scale-[0.98]"
+            >
+              Close & Finish
             </button>
           </div>
         </div>
       </motion.div>
+    </div>
+  );
+};
+
+const VoiceOrb = ({ isSpeaking, isThinking, onClick }: { isSpeaking: boolean, isThinking: boolean, onClick?: () => void }) => {
+  return (
+    <div 
+      onClick={onClick}
+      className={`relative w-48 h-48 md:w-64 md:h-64 flex items-center justify-center ${onClick ? 'cursor-pointer active:scale-95 transition-transform' : ''}`}
+    >
+      {/* Outer Glow */}
+      <div className={`absolute inset-0 rounded-full bg-blue-500/20 blur-[60px] md:blur-[80px] transition-all duration-1000 ${isSpeaking ? 'scale-150 opacity-100' : 'scale-100 opacity-40'}`} />
+      
+      {/* Core Orb */}
+      <motion.div
+        animate={{
+          scale: isSpeaking ? [1, 1.1, 1] : 1,
+          rotate: 360
+        }}
+        transition={{
+          scale: { repeat: Infinity, duration: 2 },
+          rotate: { repeat: Infinity, duration: 20, ease: "linear" }
+        }}
+        className={`relative w-36 h-36 md:w-48 md:h-48 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-500 to-emerald-400 shadow-[0_0_30px_rgba(59,130,246,0.5)] md:shadow-[0_0_50px_rgba(59,130,246,0.5)] flex items-center justify-center overflow-hidden`}
+      >
+        {/* Swirling inner details */}
+        <div className="absolute inset-0 opacity-30 animate-orb-rotate">
+          <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,_white_0%,_transparent_70%)] blur-xl" />
+        </div>
+        
+        {/* Pulse Ring */}
+        {isSpeaking && (
+          <motion.div 
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 2, opacity: 0 }}
+            transition={{ repeat: Infinity, duration: 1.5 }}
+            className="absolute inset-0 border-2 border-white/30 rounded-full"
+          />
+        )}
+      </motion.div>
+
+      {/* Thinking Indicator */}
+      {isThinking && (
+        <div className="absolute -bottom-8 flex gap-2">
+          <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" />
+          <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:0.2s]" />
+          <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:0.4s]" />
+        </div>
+      )}
     </div>
   );
 };
@@ -526,7 +462,12 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       // If we are present and in voice mode, ensure session is connected
       if (connectionStatus === 'idle' || connectionStatus === 'error' || (connectionStatus === 'connected' && !liveSessionRef.current)) {
         console.log("Session lifecycle: connecting live session");
-        connectLive();
+        
+        const now = Date.now();
+        const timeSinceLastSeen = lastSeenTimeRef.current ? (now - lastSeenTimeRef.current) : null;
+        const isReturn = timeSinceLastSeen !== null && timeSinceLastSeen < (sessionTimeout * 1000);
+        
+        connectLive(documents, isReturn);
       }
     } else if (isPresent && !isVoiceMode) {
       // If we are present but in text mode, close live session if it exists
@@ -584,7 +525,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       setRemainingSeconds(remaining);
 
       // Inactivity timeout (prompt)
-      if (idleTime > (sessionTimeout - 30) * 1000 && !hasPromptedRef.current && sessionTimeout > 30) {
+      if (idleTime > (sessionTimeout - 30) * 1000 && !hasPromptedRef.current && sessionTimeout > 30 && !showSummary) {
         if (liveSessionRef.current) {
           // Use a more natural prompt via text input to the live session
           try {
@@ -598,13 +539,18 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         }
       } 
       // Timeout after prompt (or immediately if timeout is reached)
-      else if (idleTime > totalTimeout) {
-        console.log("Session timed out due to inactivity");
-        setIsPresent(false);
+      else if (idleTime > totalTimeout && !showSummary) {
+        console.log("Session timed out due to inactivity - showing summary");
+        setShowSummary(true);
         if (liveSessionRef.current) {
           liveSessionRef.current.close();
           liveSessionRef.current = null;
         }
+      }
+      // If summary is showing, have a secondary timeout to reset completely if no one interacts
+      else if (showSummary && idleTime > totalTimeout + 60000) {
+        console.log("Summary popup timed out - resetting kiosk");
+        handleReset();
       }
     }, 1000);
 
@@ -895,7 +841,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       `;
 
       const sessionPromise = currentAi.live.connect({
-        model: "gemini-2.5-flash-native-audio-preview-09-2025",
+        model: "gemini-2.5-flash-native-audio-preview-12-2025",
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
@@ -916,22 +862,22 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
             
             // Trigger proactive greeting via text signal
             const signal = isReturn ? 'RETURN_PRESENCE' : 'NEW_PRESENCE';
-            const prompt = isReturn 
-              ? "The user has returned. Please greet them back." 
-              : "A new user has arrived. Please introduce yourself and welcome them.";
+            const promptText = isReturn 
+              ? `[SIGNAL: ${signal}] The user has returned. Please greet them back warmly.` 
+              : `[SIGNAL: ${signal}] A new user has arrived. Please introduce yourself and welcome them as the ${project.title} assistant.`;
               
             sessionPromise.then(s => {
               if (s && isPresentRef.current) {
-                // Use a small timeout to ensure the session is fully ready
+                // Use a smaller timeout to ensure the session is ready but greeting is fast
                 setTimeout(() => {
                   if (s && isPresentRef.current) {
-                    console.log("Sending proactive greeting prompt to AI...");
+                    console.log(`Sending proactive greeting prompt (${signal}) to AI...`);
                     s.sendClientContent({
-                      turns: [{ role: 'user', parts: [{ text: prompt + " Please respond immediately with your greeting." }] }],
+                      turns: [{ role: 'user', parts: [{ text: promptText + " Respond immediately." }] }],
                       turnComplete: true
                     });
                   }
-                }, 800);
+                }, 400);
               }
             });
             
@@ -1083,7 +1029,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       }
                     });
                   } else if (call.name === 'showSummary') {
-                    openSummary();
+                    setShowSummary(true);
                     sessionPromise.then(s => {
                       if (s) {
                         s.sendToolResponse({
@@ -1116,9 +1062,19 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
 
               // User transcription
               if (message.serverContent?.inputTranscription?.text) {
+                const text = message.serverContent.inputTranscription.text.toLowerCase();
                 setTranscription(message.serverContent.inputTranscription.text);
                 lastActivityRef.current = Date.now();
                 hasPromptedRef.current = false;
+
+                // Handle voice commands when summary is showing
+                if (showSummary) {
+                  if (text.includes('print')) {
+                    window.print();
+                  } else if (text.includes('close') || text.includes('done') || text.includes('finish')) {
+                    handleReset();
+                  }
+                }
               }
 
               // Model transcription
@@ -1267,30 +1223,13 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       liveSessionRef.current.close();
       liveSessionRef.current = null;
     }
+    // We don't stop the media stream tracks here as we want to keep the camera active for presence detection
     isPresentRef.current = false;
     setIsPresent(false);
     setMessages([]);
     setRemainingSeconds(sessionTimeout);
     setConnectionStatus('idle');
-    setSelectedSource(null);
   };
-
-  const openSummary = async () => {
-    setShowSummary(true);
-    if (session && !session.startsWith('local-')) {
-      try {
-        await fetch(`${API_BASE}/api/sessions/${session}/complete`, { method: 'POST' });
-      } catch (error) {
-        console.warn('Failed to mark session complete', error);
-      }
-    }
-  };
-
-  useEffect(() => {
-    if (showSummary && remainingSeconds === 0) {
-      handleReset();
-    }
-  }, [showSummary, remainingSeconds]);
 
   const handleSend = async (text: string) => {
     if (!text.trim() || !session) return;
@@ -1326,7 +1265,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         };
         setMessages(prev => [...prev, aiMsg]);
         if (result.showSummary) {
-          openSummary();
+          setShowSummary(true);
         }
       } catch (err) {
         console.error(err);
@@ -1556,10 +1495,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
 
         {showSummary && (
           <SummaryPopup 
-            sessionId={session} 
-            messages={messages} 
-            documents={documents} 
-            projectId={project.id}
+            sessionId={session || 'unknown'} 
             onClose={handleReset} 
           />
         )}
@@ -1677,10 +1613,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
 
         {showSummary && (
           <SummaryPopup 
-            sessionId={session} 
-            messages={messages} 
-            documents={documents} 
-            projectId={project.id}
+            sessionId={session || 'unknown'} 
             onClose={handleReset} 
           />
         )}
@@ -2588,16 +2521,21 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessionTimeout, setSessionTimeout] = useState(180); // Default 3 minutes
 
-  const pathname = window.location.pathname;
-  const sessionMatch = pathname.match(/^\/session\/([^/]+)$/);
-  const documentMatch = pathname.match(/^\/document\/([^/]+)$/);
-
+  // Check for summary page
+  const path = window.location.pathname;
+  const sessionMatch = path.match(/^\/session\/([^/]+)/);
   if (sessionMatch) {
-    return <SummaryPage sessionId={decodeURIComponent(sessionMatch[1])} />;
+    return <SummaryPage sessionId={sessionMatch[1]} />;
   }
 
-  if (documentMatch) {
-    return <DocumentPage documentId={decodeURIComponent(documentMatch[1])} />;
+  const urlParams = new URLSearchParams(window.location.search);
+  const summaryData = urlParams.get('summary');
+  if (summaryData) {
+    // Fallback for old style links if any
+    try {
+      const decoded = JSON.parse(atob(summaryData));
+      if (decoded.sessionId) return <SummaryPage sessionId={decoded.sessionId} />;
+    } catch (e) {}
   }
 
   useEffect(() => {
