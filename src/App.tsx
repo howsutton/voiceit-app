@@ -17,6 +17,84 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 const API_BASE = import.meta.env.VITE_API_URL || '';
 const PUBLIC_BASE_URL = (import.meta.env.VITE_PUBLIC_BASE_URL || 'https://voiceit.cherami.com').replace(/\/$/, '');
 
+
+
+const VoiceOrb = ({ 
+  isSpeaking, 
+  isThinking, 
+  onClick 
+}: { 
+  isSpeaking: boolean; 
+  isThinking: boolean; 
+  onClick?: () => void; 
+}) => {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative flex items-center justify-center rounded-full transition-all duration-300 ${
+        onClick ? 'cursor-pointer' : 'cursor-default'
+      }`}
+      aria-label="Voice assistant status"
+    >
+      <motion.div
+        animate={{
+          scale: isSpeaking ? [1, 1.08, 1] : isThinking ? [1, 1.04, 1] : 1,
+          opacity: isSpeaking ? [0.35, 0.6, 0.35] : isThinking ? [0.2, 0.35, 0.2] : 0.18,
+        }}
+        transition={{
+          repeat: Infinity,
+          duration: isSpeaking ? 1.2 : isThinking ? 1.8 : 2.4,
+          ease: 'easeInOut',
+        }}
+        className="absolute w-56 h-56 md:w-80 md:h-80 rounded-full bg-blue-500 blur-3xl"
+      />
+
+      <motion.div
+        animate={{
+          scale: isSpeaking ? [1, 1.06, 1] : isThinking ? [1, 1.03, 1] : 1,
+          borderColor: isSpeaking
+            ? ['rgba(96,165,250,0.65)', 'rgba(59,130,246,1)', 'rgba(96,165,250,0.65)']
+            : isThinking
+            ? ['rgba(148,163,184,0.35)', 'rgba(96,165,250,0.55)', 'rgba(148,163,184,0.35)']
+            : 'rgba(255,255,255,0.12)',
+        }}
+        transition={{
+          repeat: Infinity,
+          duration: isSpeaking ? 0.9 : isThinking ? 1.6 : 2.5,
+          ease: 'easeInOut',
+        }}
+        className="relative w-40 h-40 md:w-56 md:h-56 rounded-full border bg-white/[0.03] backdrop-blur-xl shadow-2xl flex items-center justify-center"
+      >
+        <motion.div
+          animate={{
+            scale: isSpeaking ? [1, 1.12, 0.98, 1.08, 1] : isThinking ? [1, 1.04, 1] : 1,
+            backgroundColor: isSpeaking
+              ? ['rgb(37 99 235)', 'rgb(59 130 246)', 'rgb(29 78 216)', 'rgb(59 130 246)', 'rgb(37 99 235)']
+              : isThinking
+              ? ['rgb(71 85 105)', 'rgb(59 130 246)', 'rgb(71 85 105)']
+              : 'rgb(37 99 235)',
+          }}
+          transition={{
+            repeat: Infinity,
+            duration: isSpeaking ? 0.8 : isThinking ? 1.8 : 2.5,
+            ease: 'easeInOut',
+          }}
+          className="w-24 h-24 md:w-32 md:h-32 rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(59,130,246,0.35)]"
+        >
+          {isSpeaking ? (
+            <Volume2 className="w-10 h-10 md:w-14 md:h-14 text-white" />
+          ) : isThinking ? (
+            <RefreshCw className="w-10 h-10 md:w-14 md:h-14 text-white animate-spin" />
+          ) : (
+            <Mic className="w-10 h-10 md:w-14 md:h-14 text-white" />
+          )}
+        </motion.div>
+      </motion.div>
+    </button>
+  );
+};
+
 // --- Components ---
 
 const SummaryPage = ({ sessionId }: { sessionId: string }) => {
