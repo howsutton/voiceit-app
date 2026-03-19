@@ -754,6 +754,11 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       const contextText = docsToUse.map(d => `SOURCE DOCUMENT: ${d.title}\nCONTENT:\n${d.content}`).join("\n\n---\n\n");
       
       console.log("Context text length:", contextText.length);
+      if (contextText.length > 0) {
+        console.log("Context text snippet:", contextText.substring(0, 500) + "...");
+      } else {
+        console.warn("Context text is EMPTY! Check if documents have content.");
+      }
 
       const showSourceFunctionDeclaration: FunctionDeclaration = {
         name: "showSource",

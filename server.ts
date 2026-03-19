@@ -87,6 +87,14 @@ async function startServer() {
       );
     `);
     console.log("Database schema initialized.");
+
+    // Ensure content column exists if table was created earlier without it
+    try {
+      db.prepare("ALTER TABLE documents ADD COLUMN content TEXT").run();
+      console.log("Added content column to documents table.");
+    } catch (e) {
+      // Column likely already exists
+    }
   } catch (err) {
     console.error("Database initialization failed:", err);
   }
@@ -162,9 +170,11 @@ async function startServer() {
 
   app.get("/api/projects/:id/documents", checkDb, (req, res) => {
     try {
-      const docs = db.prepare("SELECT * FROM documents WHERE project_id = ?").all(req.params.id);
+      const docs = db.prepare("SELECT * FROM documents WHERE project_id = ?").all(req.params.id) as any[];
+      console.log(`Retrieved ${docs.length} documents for project ${req.params.id}. Content lengths: ${docs.map(d => d.content?.length || 0).join(', ')}`);
       res.json(docs);
     } catch (err) {
+      console.error("Failed to fetch documents:", err);
       res.status(500).json({ error: "Failed to fetch documents" });
     }
   });
@@ -179,6 +189,7 @@ async function startServer() {
         // but it's a CJS module, so createRequire is fine.
         const require = createRequire(import.meta.url);
         const pdf = require("pdf-parse");
+        console.log("pdf-parse library loaded. Type:", typeof pdf);
 
         for (const file of files) {
           let title = file.originalname;
@@ -186,9 +197,14 @@ async function startServer() {
           let pageCount = 1;
 
           try {
+            console.log(`Parsing PDF: ${file.originalname}, size: ${file.buffer.length} bytes`);
             const data = await pdf(file.buffer);
-            content = data.text;
+            content = data.text || "";
             pageCount = data.numpages || 1;
+            console.log(`Extracted ${content.length} characters from PDF: ${file.originalname}`);
+            if (content.length > 0) {
+              console.log(`Content snippet: ${content.substring(0, 100).replace(/\n/g, ' ')}...`);
+            }
           } catch (pdfError) {
             console.error(`Error parsing PDF ${file.originalname}:`, pdfError);
             // Fallback to empty content if PDF parsing fails

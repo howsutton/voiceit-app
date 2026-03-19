@@ -12,6 +12,10 @@ export async function generateGroundedAnswer(
   console.log(`Generating grounded answer for prompt: "${prompt}" with ${docs.length} documents.`);
   
   const context = docs.map(d => `SOURCE DOCUMENT: ${d.title}\nCONTENT:\n${d.content}`).join("\n\n---\n\n");
+  console.log("Context length for grounding:", context.length);
+  if (context.length > 0) {
+    console.log("Context snippet:", context.substring(0, 500) + "...");
+  }
   
   const systemInstruction = `
     You are VoiceIt, an advanced AI knowledge assistant for the project: ${project.title}.
