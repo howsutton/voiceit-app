@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Mic, MicOff, Send, BookOpen, User as UserIcon, Settings, 
   LayoutDashboard, FileText, Activity, LogOut,
-  ChevronRight, Volume2, Search, Info, Camera, Trash2,
-  Clock, RefreshCw, Plus, CheckCircle2, Phone, Mail, Printer,
-  Building2, Smile, Meh, Frown
+  ChevronRight, ChevronLeft, Volume2, Search, Info, Camera, Trash2,
+  Clock, RefreshCw, Plus, CheckCircle2, Phone, Mail, Printer, Download,
+  Building2, Smile, Meh, Frown, Hash, MessageSquare
 } from 'lucide-react';
-import { Project, Message, Document, Account, User as UserType, Analytics } from './types';
+import { Project, Message, Document, Account, User as UserType, Analytics, ProjectMessageLogItem, GlobalMessageLogItem } from './types';
 import { generateGroundedAnswer } from './services/aiService';
 import { QRCodeCanvas } from 'qrcode.react';
 
@@ -1743,6 +1743,727 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   );
 };
 
+const AccountDashboard = ({ account, projects, analytics }: { account: Account, projects: Project[], analytics: Analytics | null }) => {
+  if (!account) return null;
+  const accountProjects = projects.filter(p => p.account_id === account.id);
+  
+  return (
+    <div className="space-y-10">
+      <div className="flex justify-between items-end">
+        <div>
+          <h2 className="text-3xl font-bold text-slate-900">{account.name}</h2>
+          <p className="text-slate-500 mt-1">Account Overview & Performance</p>
+        </div>
+        <div className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold uppercase tracking-widest">
+          {accountProjects.length} Active Projects
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[
+          { label: 'Account Sessions', value: analytics?.totalSessions || '0', icon: Activity },
+          { label: 'Avg. Sentiment', value: 'Positive', icon: Smile },
+          { label: 'Active Kiosks', value: accountProjects.length, icon: Settings },
+          { label: 'Response Rate', value: '98.2%', icon: CheckCircle2 },
+        ].map((stat, i) => (
+          <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-2 bg-slate-50 rounded-lg text-slate-400">
+                <stat.icon className="w-5 h-5" />
+              </div>
+            </div>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">{stat.label}</p>
+            <h3 className="text-2xl font-bold text-slate-900">{stat.value}</h3>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-6">
+          <h3 className="text-xl font-bold text-slate-900">Account Projects</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            {accountProjects.map(proj => (
+              <div key={proj.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                <h4 className="font-bold text-slate-900 mb-2">{proj.title}</h4>
+                <p className="text-sm text-slate-500 line-clamp-2 mb-4">{proj.description}</p>
+                <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active</span>
+                  <div className="flex gap-2">
+                    <button className="text-indigo-600 font-bold text-xs hover:underline">Manage</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        
+        <div className="bg-slate-900 rounded-3xl p-8 text-white">
+          <h3 className="text-xl font-bold mb-6">Account Sentiment</h3>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Smile className="w-5 h-5 text-emerald-400" />
+                <span className="text-sm font-medium">Positive</span>
+              </div>
+              <span className="font-bold">72%</span>
+            </div>
+            <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-full bg-emerald-400 w-[72%]" />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Meh className="w-5 h-5 text-amber-400" />
+                <span className="text-sm font-medium">Neutral</span>
+              </div>
+              <span className="font-bold">18%</span>
+            </div>
+            <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-full bg-amber-400 w-[18%]" />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Frown className="w-5 h-5 text-red-400" />
+                <span className="text-sm font-medium">Negative</span>
+              </div>
+              <span className="font-bold">10%</span>
+            </div>
+            <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-full bg-red-400 w-[10%]" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const UsersView = ({ users, accounts, onRefresh, onImpersonate }: { users: UserType[], accounts: Account[], onRefresh: () => void, onImpersonate: (user: UserType) => void }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserType | null>(null);
+  const [formData, setFormData] = useState({ name: '', email: '', role: 'user', account_id: 'acc_default' });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const url = editingUser ? `${API_BASE}/api/users/${editingUser.id}` : `${API_BASE}/api/users`;
+    const method = editingUser ? 'PUT' : 'POST';
+    
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData)
+    });
+
+    if (res.ok) {
+      setShowModal(false);
+      setEditingUser(null);
+      setFormData({ name: '', email: '', role: 'user', account_id: 'acc_default' });
+      onRefresh();
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (confirm('Are you sure you want to delete this user?')) {
+      const res = await fetch(`${API_BASE}/api/users/${id}`, { method: 'DELETE' });
+      if (res.ok) onRefresh();
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-xl font-bold">User Management</h3>
+        <button 
+          onClick={() => { setEditingUser(null); setFormData({ name: '', email: '', role: 'user', account_id: 'acc_default' }); setShowModal(true); }}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-sm"
+        >
+          Add User
+        </button>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
+            <tr>
+              <th className="px-6 py-4">Name</th>
+              <th className="px-6 py-4">Email</th>
+              <th className="px-6 py-4">Role</th>
+              <th className="px-6 py-4">Account</th>
+              <th className="px-6 py-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {users.map(user => (
+              <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                <td className="px-6 py-4 font-medium text-slate-900">{user.name}</td>
+                <td className="px-6 py-4 text-slate-500">{user.email}</td>
+                <td className="px-6 py-4">
+                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                    {user.role}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-slate-500">{user.account_name || user.account_id}</td>
+                <td className="px-6 py-4 text-right space-x-2">
+                  <button 
+                    onClick={() => onImpersonate(user)}
+                    className="text-amber-600 hover:text-amber-700 font-bold text-xs"
+                  >
+                    Log in as
+                  </button>
+                  <button 
+                    onClick={() => { setEditingUser(user); setFormData({ name: user.name, email: user.email, role: user.role as any, account_id: user.account_id || 'acc_default' }); setShowModal(true); }}
+                    className="text-indigo-600 hover:text-indigo-700 font-bold text-xs"
+                  >
+                    Edit
+                  </button>
+                  <button 
+                    onClick={() => handleDelete(user.id)}
+                    className="text-red-600 hover:text-red-700 font-bold text-xs"
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
+            <h3 className="text-2xl font-bold mb-6">{editingUser ? 'Edit User' : 'Add New User'}</h3>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Full Name</label>
+                <input 
+                  type="text" 
+                  required
+                  value={formData.name}
+                  onChange={e => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Email Address</label>
+                <input 
+                  type="email" 
+                  required
+                  value={formData.email}
+                  onChange={e => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Role</label>
+                  <select 
+                    value={formData.role}
+                    onChange={e => setFormData({ ...formData, role: e.target.value as any })}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  >
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                    <option value="kiosk">Kiosk</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Account</label>
+                  <select 
+                    value={formData.account_id}
+                    onChange={e => setFormData({ ...formData, account_id: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  >
+                    {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancel</button>
+                <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100">
+                  {editingUser ? 'Save Changes' : 'Create User'}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const MessagesView = ({ effectiveUser, projects, accounts }: { effectiveUser: UserType | null, projects: Project[], accounts: Account[] }) => {
+  const [messages, setMessages] = useState<GlobalMessageLogItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [filters, setFilters] = useState({
+    search: '',
+    role: '',
+    sentiment: '',
+    projectId: '',
+    accountId: '',
+    startDate: '',
+    endDate: ''
+  });
+
+  const fetchMessages = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: '50',
+        ...filters
+      });
+      const res = await fetch(`${API_BASE}/api/messages?${params}`, {
+        headers: {
+          'x-user-id': effectiveUser?.id || ''
+        }
+      });
+      const data = await res.json();
+      setMessages(data.data);
+      setTotal(data.total);
+      setTotalPages(data.totalPages);
+    } catch (err) {
+      console.error("Failed to fetch messages:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMessages();
+  }, [page, filters.role, filters.sentiment, filters.projectId, filters.accountId, filters.startDate, filters.endDate, effectiveUser?.id]);
+
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1);
+      fetchMessages();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [filters.search]);
+
+  const handleExport = async (format: 'csv' | 'json') => {
+    const params = new URLSearchParams({
+      format,
+      ...filters
+    });
+    window.open(`${API_BASE}/api/messages/export?${params}&x-user-id=${effectiveUser?.id || ''}`, '_blank');
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h3 className="text-2xl font-bold text-slate-900">Global Messages</h3>
+          <p className="text-sm text-slate-500">View and analyze messages across all projects and accounts.</p>
+        </div>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => handleExport('csv')}
+            className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-bold hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" /> Export CSV
+          </button>
+          <button 
+            onClick={() => handleExport('json')}
+            className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" /> Export JSON
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-4 shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Search content..." 
+              value={filters.search}
+              onChange={e => setFilters({ ...filters, search: e.target.value })}
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
+          </div>
+          <select 
+            value={filters.role}
+            onChange={e => setFilters({ ...filters, role: e.target.value })}
+            className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
+          >
+            <option value="">All Roles</option>
+            <option value="user">User</option>
+            <option value="model">AI Assistant</option>
+          </select>
+          <select 
+            value={filters.sentiment}
+            onChange={e => setFilters({ ...filters, sentiment: e.target.value })}
+            className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
+          >
+            <option value="">All Sentiments</option>
+            <option value="positive">Positive</option>
+            <option value="neutral">Neutral</option>
+            <option value="negative">Negative</option>
+          </select>
+          {effectiveUser?.role === 'admin' && (
+            <select 
+              value={filters.accountId}
+              onChange={e => setFilters({ ...filters, accountId: e.target.value, projectId: '' })}
+              className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
+            >
+              <option value="">All Accounts</option>
+              {accounts.map(acc => (
+                <option key={acc.id} value={acc.id}>{acc.name}</option>
+              ))}
+            </select>
+          )}
+          <select 
+            value={filters.projectId}
+            onChange={e => setFilters({ ...filters, projectId: e.target.value })}
+            className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
+          >
+            <option value="">All Projects</option>
+            {projects
+              .filter(p => !filters.accountId || p.account_id === filters.accountId)
+              .map(proj => (
+                <option key={proj.id} value={proj.id}>{proj.title}</option>
+              ))}
+          </select>
+          <input 
+            type="date" 
+            value={filters.startDate}
+            onChange={e => setFilters({ ...filters, startDate: e.target.value })}
+            className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
+          />
+          <input 
+            type="date" 
+            value={filters.endDate}
+            onChange={e => setFilters({ ...filters, endDate: e.target.value })}
+            className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
+          />
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">Context</th>
+                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">Message</th>
+                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">Sentiment</th>
+                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">Timestamp</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                <tr><td colSpan={4} className="px-6 py-12 text-center text-slate-400">Loading messages...</td></tr>
+              ) : messages.length === 0 ? (
+                <tr><td colSpan={4} className="px-6 py-12 text-center text-slate-400">No messages found matching filters.</td></tr>
+              ) : (
+                messages.map(msg => (
+                  <tr key={msg.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-6 py-4 align-top">
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-slate-900 truncate max-w-[150px]">{msg.project_title}</p>
+                        <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">{msg.account_name}</p>
+                        <p className="text-[10px] text-indigo-500 font-mono">ID: {msg.session_id}</p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 max-w-md">
+                      <div className="flex gap-3">
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${msg.role === 'user' ? 'bg-blue-100 text-blue-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                          {msg.role === 'user' ? <UserIcon className="w-3 h-3" /> : <Activity className="w-3 h-3" />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm text-slate-700 line-clamp-3">{msg.content}</p>
+                          {msg.sources && msg.sources.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {msg.sources.map((src, i) => (
+                                <span key={i} className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[9px] font-medium">
+                                  {src.documentTitle}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 align-top">
+                      {msg.sentiment && (
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                          msg.sentiment === 'positive' ? 'bg-emerald-50 text-emerald-600' : 
+                          msg.sentiment === 'negative' ? 'bg-red-50 text-red-600' : 
+                          'bg-slate-50 text-slate-400'
+                        }`}>
+                          {msg.sentiment === 'positive' ? <Smile className="w-3 h-3" /> : 
+                           msg.sentiment === 'negative' ? <Frown className="w-3 h-3" /> : 
+                           <Meh className="w-3 h-3" />}
+                          {msg.sentiment}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 align-top">
+                      <p className="text-xs text-slate-500">{new Date(msg.created_at).toLocaleDateString()}</p>
+                      <p className="text-[10px] text-slate-400">{new Date(msg.created_at).toLocaleTimeString()}</p>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="flex justify-between items-center px-2">
+        <p className="text-xs text-slate-400 font-medium">Showing {messages.length} of {total} messages</p>
+        <div className="flex items-center gap-4">
+          <p className="text-xs text-slate-400">Page {page} of {totalPages}</p>
+          <div className="flex gap-2">
+            <button 
+              disabled={page === 1}
+              onClick={() => setPage(p => p - 1)}
+              className="p-2 bg-white border border-slate-200 rounded-lg text-slate-600 disabled:opacity-50 hover:bg-slate-50 transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button 
+              disabled={page === totalPages}
+              onClick={() => setPage(p => p + 1)}
+              className="p-2 bg-white border border-slate-200 rounded-lg text-slate-600 disabled:opacity-50 hover:bg-slate-50 transition-colors"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ProjectLogsView = ({ project, onBack }: { project: Project, onBack: () => void }) => {
+  const [logs, setLogs] = useState<ProjectMessageLogItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState({ search: '', role: '', sentiment: '', startDate: '', endDate: '' });
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const sessions = useMemo(() => {
+    const groups: { [key: string]: ProjectMessageLogItem[] } = {};
+    logs.forEach(log => {
+      if (!groups[log.session_id]) groups[log.session_id] = [];
+      groups[log.session_id].push(log);
+    });
+    
+    return Object.entries(groups).sort((a, b) => {
+      const latestA = Math.max(...a[1].map(m => new Date(m.created_at).getTime()));
+      const latestB = Math.max(...b[1].map(m => new Date(m.created_at).getTime()));
+      return latestB - latestA;
+    }).map(([sessionId, messages]) => ({
+      sessionId,
+      messages: messages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    }));
+  }, [logs]);
+
+  const fetchLogs = async () => {
+    setLoading(true);
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: '20',
+      ...Object.fromEntries(Object.entries(filters).filter(([_, v]) => v))
+    });
+    const res = await fetch(`${API_BASE}/api/projects/${project.id}/messages?${params}`);
+    if (res.ok) {
+      const data = await res.json();
+      setLogs(data.data);
+      setTotalPages(data.totalPages);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchLogs(); }, [project.id, page, filters]);
+
+  const handleExport = (format: 'json' | 'csv') => {
+    const params = new URLSearchParams({
+      format,
+      ...Object.fromEntries(Object.entries(filters).filter(([_, v]) => v))
+    });
+    window.open(`${API_BASE}/api/projects/${project.id}/messages/export?${params}`);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-4 mb-6">
+        <button 
+          onClick={onBack}
+          className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 transition-colors"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <div>
+          <h3 className="text-xl font-bold text-slate-900">Session Logs</h3>
+          <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{project.title}</p>
+        </div>
+        <div className="ml-auto flex gap-2">
+          <button 
+            onClick={() => handleExport('csv')}
+            className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-bold hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" /> Export CSV
+          </button>
+          <button 
+            onClick={() => handleExport('json')}
+            className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" /> Export JSON
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Search content..." 
+              value={filters.search}
+              onChange={e => setFilters({ ...filters, search: e.target.value })}
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
+          </div>
+          <select 
+            value={filters.role}
+            onChange={e => setFilters({ ...filters, role: e.target.value })}
+            className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
+          >
+            <option value="">All Roles</option>
+            <option value="user">User</option>
+            <option value="model">AI Assistant</option>
+          </select>
+          <select 
+            value={filters.sentiment}
+            onChange={e => setFilters({ ...filters, sentiment: e.target.value })}
+            className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
+          >
+            <option value="">All Sentiments</option>
+            <option value="positive">Positive</option>
+            <option value="neutral">Neutral</option>
+            <option value="negative">Negative</option>
+          </select>
+          <input 
+            type="date" 
+            value={filters.startDate}
+            onChange={e => setFilters({ ...filters, startDate: e.target.value })}
+            className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
+          />
+          <input 
+            type="date" 
+            value={filters.endDate}
+            onChange={e => setFilters({ ...filters, endDate: e.target.value })}
+            className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
+          />
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div className="divide-y divide-slate-100">
+          {loading ? (
+            <div className="p-12 text-center text-slate-400">Loading logs...</div>
+          ) : sessions.length === 0 ? (
+            <div className="p-12 text-center text-slate-400">No messages found matching filters.</div>
+          ) : (
+            sessions.map(session => (
+              <div key={session.sessionId} className="p-6 space-y-6 bg-white">
+                <div className="flex items-center justify-between border-b border-slate-50 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
+                      <Hash className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900">Session {session.sessionId}</h4>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
+                        Started {new Date(session.messages[0].session_start || session.messages[0].created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="space-y-4">
+                  {session.messages.map(log => (
+                    <div key={log.id} className="flex gap-4 group">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${log.role === 'user' ? 'bg-blue-100 text-blue-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                        {log.role === 'user' ? <UserIcon className="w-4 h-4" /> : <Activity className="w-4 h-4" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{log.role === 'model' ? 'AI Assistant' : 'User'}</span>
+                          <div className="flex items-center gap-3">
+                            {log.sentiment && (
+                              <span className={`flex items-center gap-1 text-[10px] font-bold uppercase ${log.sentiment === 'positive' ? 'text-emerald-600' : log.sentiment === 'negative' ? 'text-red-600' : 'text-slate-400'}`}>
+                                {log.sentiment === 'positive' ? <Smile className="w-3 h-3" /> : log.sentiment === 'negative' ? <Frown className="w-3 h-3" /> : <Meh className="w-3 h-3" />}
+                                {log.sentiment}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-slate-400">{new Date(log.created_at).toLocaleTimeString()}</span>
+                          </div>
+                        </div>
+                        <p className="text-sm text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-xl inline-block max-w-full">{log.content}</p>
+                        
+                        {log.sources && log.sources.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                              <BookOpen className="w-3 h-3" /> Sources Used
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {log.sources.map((src, i) => (
+                                <div key={i} className="p-2 bg-indigo-50/50 border border-indigo-100 rounded-lg text-[10px]">
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="font-bold text-indigo-900 truncate">{src.documentTitle}</span>
+                                    <span className="text-indigo-400">p. {src.pageNumber}</span>
+                                  </div>
+                                  <p className="text-indigo-700/70 italic line-clamp-2">"{src.excerpt}"</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="flex justify-between items-center">
+        <p className="text-xs text-slate-400">Page {page} of {totalPages}</p>
+        <div className="flex gap-2">
+          <button 
+            disabled={page === 1}
+            onClick={() => setPage(p => p - 1)}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <button 
+            disabled={page === totalPages}
+            onClick={() => setPage(p => p + 1)}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { onLaunchKiosk: (project: Project) => void, sessionTimeout: number, setSessionTimeout: (val: number) => void }) => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -1775,14 +2496,22 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
   } | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
+  const [currentUser, setCurrentUser] = useState<UserType | null>(null);
+  const [impersonatedUser, setImpersonatedUser] = useState<UserType | null>(null);
+  const effectiveUser = impersonatedUser || currentUser;
+  const effectiveUserId = effectiveUser?.id || '';
+
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+
   const fetchData = async () => {
     console.log("fetchData: Starting Promise.all for projects, users, analytics, accounts...");
     try {
+      const headers = { 'x-user-id': effectiveUserId };
       const [pRes, uRes, aRes, accRes] = await Promise.all([
-        fetch(`${API_BASE}/api/projects`).then(r => r),
-        fetch(`${API_BASE}/api/users`).then(r => r),
-        fetch(`${API_BASE}/api/analytics`).then(r => r),
-        fetch(`${API_BASE}/api/accounts`).then(r => r)
+        fetch(`${API_BASE}/api/projects`, { headers }).then(r => r),
+        fetch(`${API_BASE}/api/users`, { headers }).then(r => r),
+        fetch(`${API_BASE}/api/analytics`, { headers }).then(r => r),
+        fetch(`${API_BASE}/api/accounts`, { headers }).then(r => r)
       ]);
       
       if (!pRes.ok || !uRes.ok || !aRes.ok || !accRes.ok) {
@@ -1799,15 +2528,25 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
       setUsers(users);
       setAnalytics(analytics);
       setAccounts(accounts);
+
+      // Set initial current user if not set
+      if (!currentUser && users.length > 0) {
+        // Find the first admin or just the first user for demo purposes
+        const admin = users.find((u: UserType) => u.role === 'admin');
+        setCurrentUser(admin || users[0]);
+      }
+      setIsInitialLoading(false);
     } catch (error) {
       console.error("Fetch data failed:", error);
       setAnalytics(null);
+      setIsInitialLoading(false);
     }
   };
 
   const fetchAccountAnalytics = async (accountId: string) => {
     try {
-      const res = await fetch(`${API_BASE}/api/accounts/${accountId}/analytics`);
+      const headers = { 'x-user-id': effectiveUserId };
+      const res = await fetch(`${API_BASE}/api/accounts/${accountId}/analytics`, { headers });
       if (res.ok) {
         const data = await res.json();
         setAccountAnalytics(data);
@@ -1991,10 +2730,37 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
     }
   };
 
+  if (isInitialLoading || !effectiveUser) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-8 w-full">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-slate-500 font-bold text-xs uppercase tracking-widest">Initializing Platform...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#f8f9fa] text-slate-900 flex flex-col md:flex-row font-sans">
+    <div className="min-h-screen bg-[#f8f9fa] text-slate-900 flex flex-col md:flex-row font-sans relative">
+      {/* Impersonation Banner */}
+      {impersonatedUser && (
+        <div className="fixed top-0 left-0 right-0 z-[100] bg-amber-500 text-white px-4 py-2 flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-3 text-sm font-bold">
+            <Activity className="w-4 h-4 animate-pulse" />
+            <span>Impersonating: {impersonatedUser.name} ({impersonatedUser.email})</span>
+          </div>
+          <button 
+            onClick={() => setImpersonatedUser(null)}
+            className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-bold transition-colors"
+          >
+            Return to Admin
+          </button>
+        </div>
+      )}
+
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 flex flex-col transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${showMobileMenu ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 flex flex-col transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${showMobileMenu ? 'translate-x-0' : '-translate-x-full'} ${impersonatedUser ? 'pt-10' : ''}`}>
         <div className="p-6 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-indigo-600 rounded flex items-center justify-center text-white">
@@ -2008,13 +2774,13 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
         </div>
         <nav className="flex-1 p-4 space-y-1">
           {[
-            { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
-            { id: 'accounts', icon: Building2, label: 'Accounts' },
-            { id: 'projects', icon: BookOpen, label: 'Projects' },
-            { id: 'users', icon: UserIcon, label: 'Users' },
-            { id: 'analytics', icon: Activity, label: 'Analytics' },
-            { id: 'settings', icon: Settings, label: 'Settings' },
-          ].map((item) => (
+            { id: 'overview', icon: LayoutDashboard, label: 'Overview', roles: ['admin'] },
+            { id: 'accounts', icon: Building2, label: 'Accounts', roles: ['admin'] },
+            { id: 'projects', icon: BookOpen, label: 'Projects', roles: ['admin', 'user'] },
+            { id: 'messages', icon: MessageSquare, label: 'Messages', roles: ['admin', 'user'] },
+            { id: 'users', icon: UserIcon, label: 'Users', roles: ['admin'] },
+            { id: 'settings', icon: Settings, label: 'Settings', roles: ['admin', 'user'] },
+          ].filter(item => !item.roles || item.roles.includes(effectiveUser?.role || 'user')).map((item) => (
             <button
               key={item.id}
               onClick={() => { setActiveTab(item.id); setManagingProject(null); setSelectedAccount(null); setShowMobileMenu(false); }}
@@ -2077,7 +2843,7 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
 
       {/* Main */}
       <main className="flex-1 p-4 md:p-10 overflow-y-auto">
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-8 md:mb-10">
+        <header className={`flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-8 md:mb-10 ${impersonatedUser ? 'mt-12' : ''}`}>
           <div>
             <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 capitalize">
               {managingProject ? 'Project Management' : selectedAccount ? `Account: ${selectedAccount.name}` : activeTab}
@@ -2087,7 +2853,7 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
             </p>
           </div>
           <div className="flex gap-3 w-full sm:w-auto">
-            {activeTab === 'accounts' && !selectedAccount && (
+            {activeTab === 'accounts' && !selectedAccount && effectiveUser?.role === 'admin' && (
               <button 
                 onClick={() => setShowNewAccount(true)}
                 className="flex-1 sm:flex-none px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm"
@@ -2095,13 +2861,14 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
                 New Account
               </button>
             )}
-            <button className="flex-1 sm:flex-none px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">Export Logs</button>
-            <button 
-              onClick={() => setShowNewProject(true)}
-              className="flex-1 sm:flex-none px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm"
-            >
-              New Project
-            </button>
+            {activeTab === 'projects' && !managingProject && (
+              <button 
+                onClick={() => setShowNewProject(true)}
+                className="flex-1 sm:flex-none px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm"
+              >
+                New Project
+              </button>
+            )}
           </div>
         </header>
 
@@ -2262,7 +3029,14 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
           </div>
         ) : (
           <div className="space-y-10">
-            {activeTab === 'overview' && (
+            {activeTab === 'messages' && (
+              <MessagesView 
+                effectiveUser={effectiveUser}
+                projects={projects}
+                accounts={accounts}
+              />
+            )}
+            {activeTab === 'overview' && effectiveUser?.role === 'admin' && (
               <>
                 {/* Stats */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-10">
@@ -2325,33 +3099,31 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
                       </div>
                       <div className="p-4 md:p-6">
                         <h4 
-                          className="text-base md:text-lg font-bold mb-2 group-hover:text-indigo-600 transition-colors cursor-pointer"
-                          onClick={() => onLaunchKiosk(proj)}
+                          onClick={() => setManagingProject(proj)}
+                          className="text-lg font-bold text-slate-900 mb-2 group-hover:text-indigo-600 transition-colors cursor-pointer"
                         >
                           {proj.title}
                         </h4>
-                        <p className="text-xs md:text-sm text-slate-500 line-clamp-2 mb-6">{proj.description}</p>
-                        <div className="flex flex-wrap justify-between items-center pt-4 border-t border-slate-100 gap-y-3">
-                          <div className="flex gap-3">
+                        <p className="text-sm text-slate-500 line-clamp-2 mb-4">{proj.description}</p>
+                        <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{proj.account_name || 'Enterprise'}</span>
+                          <div className="flex gap-2">
                             <button 
-                              onClick={() => handleDeleteProject(proj.id)}
-                              className="text-red-500 text-[10px] md:text-xs font-medium hover:underline"
+                              onClick={() => {
+                                setManagingProject(proj);
+                                setActiveTab('logs');
+                              }}
+                              className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-all"
                             >
-                              Delete
+                              <Activity className="w-4 h-4" />
                             </button>
                             <button 
                               onClick={() => onLaunchKiosk(proj)}
-                              className="text-indigo-600 text-[10px] md:text-xs font-medium hover:underline flex items-center gap-1"
+                              className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all"
                             >
-                              <Mic className="w-3 h-3" /> Kiosk
+                              <Mic className="w-4 h-4" />
                             </button>
                           </div>
-                          <button 
-                            onClick={() => handleManageProject(proj)}
-                            className="px-3 md:px-4 py-1.5 bg-indigo-600 text-white text-[10px] md:text-xs font-bold rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-1 shadow-sm"
-                          >
-                            Manage <ChevronRight className="w-3 h-3" />
-                          </button>
                         </div>
                       </div>
                     </div>
@@ -2359,8 +3131,15 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
                 </div>
               </>
             )}
+            {activeTab === 'overview' && effectiveUser?.role !== 'admin' && accounts.length > 0 && (
+              <AccountDashboard 
+                account={accounts.find(a => a.id === effectiveUser?.account_id) || accounts[0]} 
+                projects={projects} 
+                analytics={analytics} 
+              />
+            )}
 
-            {activeTab === 'accounts' && (
+            {activeTab === 'accounts' && effectiveUser?.role === 'admin' && (
               <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto shadow-sm">
                 <table className="w-full text-left min-w-[600px]">
                   <thead className="bg-slate-50 border-b border-slate-200">
@@ -2400,6 +3179,9 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
                 </table>
               </div>
             )}
+            {activeTab === 'users' && effectiveUser?.role === 'admin' && (
+              <UsersView users={users} accounts={accounts} onRefresh={fetchData} onImpersonate={setImpersonatedUser} />
+            )}
 
             {activeTab === 'projects' && (
               <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto shadow-sm">
@@ -2429,6 +3211,15 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
                           <div className="flex justify-end gap-2 md:gap-3">
                             <button onClick={() => onLaunchKiosk(proj)} className="text-indigo-600 font-bold text-[10px] md:text-xs hover:underline">Kiosk</button>
                             <button onClick={() => handleManageProject(proj)} className="text-slate-600 font-bold text-[10px] md:text-xs hover:underline">Manage</button>
+                            <button 
+                              onClick={() => {
+                                setManagingProject(proj);
+                                setActiveTab('logs');
+                              }} 
+                              className="text-emerald-600 font-bold text-[10px] md:text-xs hover:underline"
+                            >
+                              Logs
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -2472,6 +3263,13 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
                   </tbody>
                 </table>
               </div>
+            )}
+
+            {activeTab === 'logs' && managingProject && (
+              <ProjectLogsView project={managingProject} onBack={() => {
+                setManagingProject(null);
+                setActiveTab('projects');
+              }} />
             )}
 
             {activeTab === 'analytics' && (

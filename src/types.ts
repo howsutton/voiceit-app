@@ -26,10 +26,39 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'user';
+  role: 'admin' | 'user' | 'kiosk';
   account_id?: string;
   account_name?: string;
   last_active: string;
+  created_at?: string;
+}
+
+export interface ProjectMessageLogItem {
+  id: string;
+  session_id: string;
+  role: 'user' | 'model';
+  content: string;
+  sentiment: 'positive' | 'neutral' | 'negative' | null;
+  created_at: string;
+  user_name?: string;
+  user_email?: string;
+  session_start?: string;
+  sources?: SourceCitation[];
+}
+
+export interface GlobalMessageLogItem extends ProjectMessageLogItem {
+  project_id: string;
+  project_title: string;
+  account_id: string;
+  account_name: string;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 export interface Message {

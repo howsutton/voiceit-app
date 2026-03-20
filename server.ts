@@ -151,7 +151,15 @@ async function startServer() {
 
   app.get("/api/projects", checkDb, (req, res) => {
     try {
-      const projects = db.prepare("SELECT * FROM projects").all();
+      const userId = req.headers['x-user-id'] as string;
+      const user = userId ? db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any : null;
+      
+      let projects;
+      if (user && user.role !== 'admin') {
+        projects = db.prepare("SELECT * FROM projects WHERE account_id = ?").all(user.account_id);
+      } else {
+        projects = db.prepare("SELECT * FROM projects").all();
+      }
       res.json(projects);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch projects" });
@@ -319,15 +327,95 @@ async function startServer() {
 
   app.get("/api/users", checkDb, (req, res) => {
     try {
-      const users = db.prepare(`
-        SELECT u.*, a.name as account_name 
-        FROM users u 
-        LEFT JOIN accounts a ON u.account_id = a.id
-      `).all();
+      const userId = req.headers['x-user-id'] as string;
+      const user = userId ? db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any : null;
+
+      let users;
+      if (user && user.role !== 'admin') {
+        users = db.prepare(`
+          SELECT u.*, a.name as account_name 
+          FROM users u 
+          LEFT JOIN accounts a ON u.account_id = a.id 
+          WHERE u.account_id = ?
+        `).all(user.account_id);
+      } else {
+        users = db.prepare(`
+          SELECT u.*, a.name as account_name 
+          FROM users u 
+          LEFT JOIN accounts a ON u.account_id = a.id
+        `).all();
+      }
       res.json(users);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch users" });
     }
+  });
+
+  app.get('/api/users/:id', checkDb, (req, res) => {
+    const { id } = req.params;
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json(user);
+  });
+
+  app.post('/api/users', checkDb, (req, res) => {
+    const { name, email, role, account_id } = req.body;
+    if (!name || !email || !role) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    if (existing) {
+      return res.status(400).json({ error: 'Email already exists' });
+    }
+
+    const id = 'u_' + Math.random().toString(36).substr(2, 9);
+    db.prepare(`
+      INSERT INTO users (id, name, email, role, account_id, last_active)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, name, email, role, account_id || 'acc_default', new Date().toISOString());
+
+    const newUser = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    res.status(201).json(newUser);
+  });
+
+  app.put('/api/users/:id', checkDb, (req, res) => {
+    const { id } = req.params;
+    const { name, email, role, account_id } = req.body;
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as any;
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    db.prepare(`
+      UPDATE users 
+      SET name = ?, email = ?, role = ?, account_id = ?
+      WHERE id = ?
+    `).run(
+      name || user.name,
+      email || user.email,
+      role || user.role,
+      account_id || user.account_id,
+      id
+    );
+
+    const updatedUser = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    res.json(updatedUser);
+  });
+
+  app.delete('/api/users/:id', checkDb, (req, res) => {
+    const { id } = req.params;
+    
+    // Prevent deleting the last admin
+    const user = db.prepare('SELECT role FROM users WHERE id = ?').get(id) as any;
+    if (user?.role === 'admin') {
+      const adminCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE role = "admin"').get() as any;
+      if (adminCount.count <= 1) {
+        return res.status(400).json({ error: 'Cannot delete the last administrator' });
+      }
+    }
+
+    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    res.json({ success: true });
   });
 
   // Accounts API
@@ -389,6 +477,14 @@ async function startServer() {
 
   app.get("/api/analytics", checkDb, (req, res) => {
     try {
+      const userId = req.headers['x-user-id'] as string;
+      const user = userId ? db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any : null;
+
+      if (user && user.role !== 'admin') {
+        // Redirect to account analytics if not admin
+        return res.redirect(`/api/accounts/${user.account_id}/analytics`);
+      }
+
       const totalSessions = db.prepare("SELECT count(*) as count FROM sessions").get() as any;
       const totalMessages = db.prepare("SELECT count(*) as count FROM messages").get() as any;
       const activeProjects = db.prepare("SELECT count(*) as count FROM projects").get() as any;
@@ -444,7 +540,14 @@ async function startServer() {
 
   app.get("/api/accounts/:id/analytics", checkDb, (req, res) => {
     try {
+      const userId = req.headers['x-user-id'] as string;
+      const user = userId ? db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any : null;
       const accountId = req.params.id;
+
+      if (user && user.role !== 'admin' && user.account_id !== accountId) {
+        return res.status(403).json({ error: "Access denied: Account scoping violation" });
+      }
+
       const totalSessions = db.prepare("SELECT count(*) as count FROM sessions s JOIN projects p ON s.project_id = p.id WHERE p.account_id = ?").get(accountId) as any;
       const totalMessages = db.prepare("SELECT count(*) as count FROM messages m JOIN sessions s ON m.session_id = s.id JOIN projects p ON s.project_id = p.id WHERE p.account_id = ?").get(accountId) as any;
       const activeProjects = db.prepare("SELECT count(*) as count FROM projects WHERE account_id = ?").get(accountId) as any;
@@ -533,6 +636,314 @@ async function startServer() {
       res.json({ id: msgId, sentiment });
     } catch (err) {
       res.status(500).json({ error: "Failed to save message" });
+    }
+  });
+
+  app.get("/api/projects/:id/messages", checkDb, (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const { search, role, sentiment, startDate, endDate, page = 1, limit = 50 } = req.query;
+      const offset = (Number(page) - 1) * Number(limit);
+
+      let query = `
+        SELECT m.*, s.created_at as session_start
+        FROM messages m
+        JOIN sessions s ON m.session_id = s.id
+        WHERE s.project_id = ?
+      `;
+      const params: any[] = [projectId];
+
+      if (search) {
+        query += ` AND m.content LIKE ?`;
+        params.push(`%${search}%`);
+      }
+      if (role) {
+        query += ` AND m.role = ?`;
+        params.push(role);
+      }
+      if (sentiment) {
+        query += ` AND m.sentiment = ?`;
+        params.push(sentiment);
+      }
+      if (startDate) {
+        query += ` AND m.created_at >= ?`;
+        params.push(startDate);
+      }
+      if (endDate) {
+        query += ` AND m.created_at <= ?`;
+        params.push(endDate);
+      }
+
+      const countQuery = `SELECT COUNT(*) as count FROM (${query})`;
+      const total = (db.prepare(countQuery).get(...params) as any).count;
+
+      query += ` ORDER BY m.created_at DESC LIMIT ? OFFSET ?`;
+      params.push(Number(limit), offset);
+
+      const messages = db.prepare(query).all(...params) as any[];
+      
+      const formattedMessages = messages.map(m => {
+        let sources = [];
+        try {
+          sources = JSON.parse(m.sources_json || '[]');
+        } catch (e) {
+          console.warn(`Failed to parse sources for message ${m.id}:`, e);
+        }
+        return {
+          ...m,
+          sources
+        };
+      });
+
+      res.json({
+        data: formattedMessages,
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / Number(limit))
+      });
+    } catch (err) {
+      console.error("Failed to fetch project messages:", err);
+      res.status(500).json({ error: "Failed to fetch project messages" });
+    }
+  });
+
+  app.get("/api/projects/:id/messages/export", checkDb, (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const { format = 'json', search, role, sentiment, startDate, endDate } = req.query;
+
+      let query = `
+        SELECT m.id, m.session_id, m.role, m.content, m.sentiment, m.created_at, m.sources_json
+        FROM messages m
+        JOIN sessions s ON m.session_id = s.id
+        WHERE s.project_id = ?
+      `;
+      const params: any[] = [projectId];
+
+      if (search) {
+        query += ` AND m.content LIKE ?`;
+        params.push(`%${search}%`);
+      }
+      if (role) {
+        query += ` AND m.role = ?`;
+        params.push(role);
+      }
+      if (sentiment) {
+        query += ` AND m.sentiment = ?`;
+        params.push(sentiment);
+      }
+      if (startDate) {
+        query += ` AND m.created_at >= ?`;
+        params.push(startDate);
+      }
+      if (endDate) {
+        query += ` AND m.created_at <= ?`;
+        params.push(endDate);
+      }
+
+      query += ` ORDER BY m.created_at DESC`;
+      const messages = db.prepare(query).all(...params) as any[];
+
+      const formattedMessages = messages.map(m => {
+        let sources = [];
+        try {
+          sources = JSON.parse(m.sources_json || '[]');
+        } catch (e) {
+          console.warn(`Failed to parse sources for message ${m.id}:`, e);
+        }
+        return {
+          ...m,
+          sources
+        };
+      });
+
+      if (format === 'csv') {
+        const header = 'ID,Session ID,Role,Content,Sentiment,Created At,Sources\n';
+        const rows = formattedMessages.map(m => {
+          const sourcesStr = m.sources.map((s: any) => `${s.documentTitle} (p.${s.pageNumber})`).join('; ');
+          return `${m.id},"${m.session_id}",${m.role},"${m.content.replace(/"/g, '""')}",${m.sentiment || ''},${m.created_at},"${sourcesStr.replace(/"/g, '""')}"`;
+        }).join('\n');
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=project_${projectId}_logs.csv`);
+        return res.send(header + rows);
+      }
+
+      res.json(formattedMessages);
+    } catch (err) {
+      console.error("Export failed:", err);
+      res.status(500).json({ error: "Failed to export messages" });
+    }
+  });
+
+  app.get("/api/messages", checkDb, (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string;
+      const user = userId ? db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any : null;
+      
+      const { search, role, sentiment, projectId, accountId, startDate, endDate, page = 1, limit = 50 } = req.query;
+      const offset = (Number(page) - 1) * Number(limit);
+
+      let query = `
+        SELECT m.*, s.created_at as session_start, p.id as project_id, p.title as project_title, a.id as account_id, a.name as account_name
+        FROM messages m
+        JOIN sessions s ON m.session_id = s.id
+        JOIN projects p ON s.project_id = p.id
+        JOIN accounts a ON p.account_id = a.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (user && user.role !== 'admin') {
+        query += ` AND p.account_id = ?`;
+        params.push(user.account_id);
+      }
+
+      if (search) {
+        query += ` AND m.content LIKE ?`;
+        params.push(`%${search}%`);
+      }
+      if (role) {
+        query += ` AND m.role = ?`;
+        params.push(role);
+      }
+      if (sentiment) {
+        query += ` AND m.sentiment = ?`;
+        params.push(sentiment);
+      }
+      if (projectId) {
+        query += ` AND p.id = ?`;
+        params.push(projectId);
+      }
+      if (accountId) {
+        query += ` AND a.id = ?`;
+        params.push(accountId);
+      }
+      if (startDate) {
+        query += ` AND m.created_at >= ?`;
+        params.push(startDate);
+      }
+      if (endDate) {
+        query += ` AND m.created_at <= ?`;
+        params.push(endDate);
+      }
+
+      const countQuery = `SELECT COUNT(*) as count FROM (${query})`;
+      const total = (db.prepare(countQuery).get(...params) as any).count;
+
+      query += ` ORDER BY m.created_at DESC LIMIT ? OFFSET ?`;
+      params.push(Number(limit), offset);
+
+      const messages = db.prepare(query).all(...params) as any[];
+      
+      const formattedMessages = messages.map(m => {
+        let sources = [];
+        try {
+          sources = JSON.parse(m.sources_json || '[]');
+        } catch (e) {
+          console.warn(`Failed to parse sources for message ${m.id}:`, e);
+        }
+        return {
+          ...m,
+          sources
+        };
+      });
+
+      res.json({
+        data: formattedMessages,
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / Number(limit))
+      });
+    } catch (err) {
+      console.error("Failed to fetch messages:", err);
+      res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+
+  app.get("/api/messages/export", checkDb, (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string;
+      const user = userId ? db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any : null;
+      
+      const { format = 'csv', search, role, sentiment, projectId, accountId, startDate, endDate } = req.query;
+
+      let query = `
+        SELECT m.*, s.created_at as session_start, p.id as project_id, p.title as project_title, a.id as account_id, a.name as account_name
+        FROM messages m
+        JOIN sessions s ON m.session_id = s.id
+        JOIN projects p ON s.project_id = p.id
+        JOIN accounts a ON p.account_id = a.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (user && user.role !== 'admin') {
+        query += ` AND p.account_id = ?`;
+        params.push(user.account_id);
+      }
+
+      if (search) {
+        query += ` AND m.content LIKE ?`;
+        params.push(`%${search}%`);
+      }
+      if (role) {
+        query += ` AND m.role = ?`;
+        params.push(role);
+      }
+      if (sentiment) {
+        query += ` AND m.sentiment = ?`;
+        params.push(sentiment);
+      }
+      if (projectId) {
+        query += ` AND p.id = ?`;
+        params.push(projectId);
+      }
+      if (accountId) {
+        query += ` AND a.id = ?`;
+        params.push(accountId);
+      }
+      if (startDate) {
+        query += ` AND m.created_at >= ?`;
+        params.push(startDate);
+      }
+      if (endDate) {
+        query += ` AND m.created_at <= ?`;
+        params.push(endDate);
+      }
+
+      query += ` ORDER BY m.created_at DESC`;
+      const messages = db.prepare(query).all(...params) as any[];
+
+      const formattedMessages = messages.map(m => {
+        let sources = [];
+        try {
+          sources = JSON.parse(m.sources_json || '[]');
+        } catch (e) {
+          console.warn(`Failed to parse sources for message ${m.id}:`, e);
+        }
+        return {
+          ...m,
+          sources
+        };
+      });
+
+      if (format === 'csv') {
+        const header = 'ID,Session ID,Project,Account,Role,Content,Sentiment,Created At,Sources\n';
+        const rows = formattedMessages.map(m => {
+          const sourcesStr = m.sources.map((s: any) => `${s.documentTitle} (p.${s.pageNumber})`).join('; ');
+          return `${m.id},"${m.session_id}","${m.project_title.replace(/"/g, '""')}","${m.account_name.replace(/"/g, '""')}",${m.role},"${m.content.replace(/"/g, '""')}",${m.sentiment || ''},${m.created_at},"${sourcesStr.replace(/"/g, '""')}"`;
+        }).join('\n');
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=messages_export.csv`);
+        return res.send(header + rows);
+      }
+
+      res.json(formattedMessages);
+    } catch (err) {
+      console.error("Export failed:", err);
+      res.status(500).json({ error: "Failed to export messages" });
     }
   });
 
