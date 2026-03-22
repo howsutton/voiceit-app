@@ -1321,6 +1321,21 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                   }
                 }
 
+                // 3. Awaiting POST-source action (e.g. user is done)
+                if (selectedSource && sourceFlowStateRef.current === 'awaiting_post_source_action') {
+                  const endSessionPatterns = [
+                    'no', 'no thanks', 'nothing else', 'thats all', 'that is all', 
+                    'im done', 'i am done', 'goodbye', 'finish', 'done', 'close session',
+                    'no thats all', 'no that is all', 'nothing else thanks'
+                  ];
+
+                  if (endSessionPatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
+                    console.log("End session detected after source:", normalized);
+                    enterSummaryMode();
+                    return; // Consume this transcript
+                  }
+                }
+
                 // Handle voice commands when summary is showing
                 if (showSummary) {
                   if (text.includes('print')) {
