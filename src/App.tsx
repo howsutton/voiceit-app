@@ -339,7 +339,7 @@ const SummaryPopup = ({ sessionId, onClose, onPrint }: { sessionId: string, onCl
   );
 };
 
-const VoiceOrb = ({ isSpeaking, isThinking, onClick }: { isSpeaking: boolean, isThinking: boolean, onClick?: () => void }) => {
+const VoiceOrb = ({ isSpeaking, isThinking, isShowingSourcePending, onClick }: { isSpeaking: boolean, isThinking: boolean, isShowingSourcePending?: boolean, onClick?: () => void }) => {
   return (
     <div 
       onClick={onClick}
@@ -382,6 +382,14 @@ const VoiceOrb = ({ isSpeaking, isThinking, onClick }: { isSpeaking: boolean, is
           <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" />
           <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:0.2s]" />
           <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:0.4s]" />
+        </div>
+      )}
+
+      {/* Fetching Source Indicator */}
+      {isShowingSourcePending && (
+        <div className="absolute -bottom-12 flex items-center gap-2 bg-indigo-600/20 px-3 py-1 rounded-full border border-indigo-500/30">
+          <BookOpen className="w-3 h-3 text-indigo-400 animate-pulse" />
+          <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">Fetching source...</span>
         </div>
       )}
     </div>
@@ -428,6 +436,11 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const reconnectTimeoutRef = useRef<any>(null);
   const reconnectAttemptsRef = useRef(0);
   const isReconnectingRef = useRef(false);
+  
+  // Source offer handoff state
+  const lastOfferedSourcesRef = useRef<any[]>([]);
+  const awaitingSourceConfirmationRef = useRef<boolean>(false);
+  const [isShowingSourcePending, setIsShowingSourcePending] = useState(false);
 
   // Sync refs with state for use in callbacks
   useEffect(() => {
@@ -893,6 +906,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         - Be friendly, calm, confident, and professional.
         - IMPORTANT: After every answer derived from the knowledge base, you MUST ask the user if they want to see the source.
         - If they say "yes", "show me", "open source", or specify a source, call the 'showSource' tool with the relevant details.
+        - If you have just offered a source and the user says any affirmative response such as "yes", "yes please", "show me", or "okay", immediately call 'showSource' in the same turn without asking again.
         - If they say "close source", "hide source", or "stop showing", call the 'closeSource' tool.
         - You can handle multiple sources. If there are multiple, ask which one they want to see or offer to show them all.
         - READ SOURCE FEATURE: When a source is shown on screen via 'showSource', you MUST ask the user if they would like you to read out what is shown. If they say yes, read the excerpt clearly and naturally.
@@ -1046,16 +1060,27 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       pageNumber: args.pageNumber,
                       excerpt: args.excerpt
                     };
-                    setSelectedSource({
-                      id: 'source-' + Date.now(),
-                      project_id: project.id,
-                      title: args.documentTitle,
-                      content: args.excerpt,
-                      page_count: 1,
-                      ...newSource
-                    });
                     
-                    currentTurnRef.current.sources.push(newSource);
+                    // Deduplicate: check if already showing this source
+                    const isAlreadySelected = selectedSource && 
+                      selectedSource.documentTitle === newSource.documentTitle && 
+                      selectedSource.pageNumber === newSource.pageNumber;
+
+                    if (!isAlreadySelected) {
+                      setSelectedSource({
+                        id: 'source-' + Date.now(),
+                        project_id: project.id,
+                        title: args.documentTitle,
+                        content: args.excerpt,
+                        page_count: 1,
+                        ...newSource
+                      });
+                    }
+                    
+                    // Ensure it's in currentTurnRef sources if not already
+                    if (!currentTurnRef.current.sources.some(s => s.documentTitle === newSource.documentTitle && s.pageNumber === newSource.pageNumber)) {
+                      currentTurnRef.current.sources.push(newSource);
+                    }
                     
                     // Add source to the current model message
                     setMessages(prev => {
@@ -1114,6 +1139,13 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
 
               if (message.serverContent?.turnComplete) {
                 setTranscription('');
+                
+                // Track if this answer had sources to offer
+                if (currentTurnRef.current.sources.length > 0) {
+                  lastOfferedSourcesRef.current = [...currentTurnRef.current.sources];
+                  awaitingSourceConfirmationRef.current = true;
+                  console.log("Source offer pending for:", lastOfferedSourcesRef.current);
+                }
                 
                 // Save the turn to backend if we have content
                 const currentSession = sessionRef.current;
@@ -1183,6 +1215,56 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 currentTurnRef.current.userText = text;
                 lastActivityRef.current = Date.now();
                 hasPromptedRef.current = false;
+
+                // Source offer handoff logic
+                if (awaitingSourceConfirmationRef.current && lastOfferedSourcesRef.current.length > 0) {
+                  const normalized = text.toLowerCase().trim().replace(/[.,?!]/g, '');
+                  const affirmativePatterns = [
+                    'yes', 'yeah', 'yep', 'sure', 'okay', 'ok', 'show me', 'open it', 
+                    'show source', 'yes please', 'please do', 'show it', 'open source'
+                  ];
+                  
+                  if (affirmativePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
+                    console.log("Affirmative source confirmation detected:", normalized);
+                    const sourceToShow = lastOfferedSourcesRef.current[0];
+                    
+                    // Deduplicate: check if already showing this source
+                    const isAlreadySelected = selectedSource && 
+                      selectedSource.documentTitle === sourceToShow.documentTitle && 
+                      selectedSource.pageNumber === sourceToShow.pageNumber;
+
+                    if (!isAlreadySelected) {
+                      setIsShowingSourcePending(true);
+                      setSelectedSource({
+                        id: 'source-auto-' + Date.now(),
+                        project_id: project.id,
+                        title: sourceToShow.documentTitle,
+                        content: sourceToShow.excerpt,
+                        page_count: 1,
+                        ...sourceToShow
+                      });
+                      
+                      // Also ensure it's in the messages if not already there
+                      setMessages(prev => {
+                        const lastMsg = prev[prev.length - 1];
+                        if (lastMsg?.role === 'model') {
+                          const existingSources = lastMsg.sources || [];
+                          if (!existingSources.some(s => s.documentTitle === sourceToShow.documentTitle && s.pageNumber === sourceToShow.pageNumber)) {
+                            return [...prev.slice(0, -1), { ...lastMsg, sources: [...existingSources, sourceToShow] }];
+                          }
+                        }
+                        return prev;
+                      });
+
+                      setTimeout(() => setIsShowingSourcePending(false), 1000);
+                    }
+                    
+                    awaitingSourceConfirmationRef.current = false;
+                  } else if (text.length > 15) {
+                    // If user says something long/substantive, expire the source offer window
+                    awaitingSourceConfirmationRef.current = false;
+                  }
+                }
 
                 // Handle voice commands when summary is showing
                 if (showSummary) {
@@ -1372,6 +1454,9 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     // Comprehensive state reset
     setIsPresent(false);
     isPresentRef.current = false;
+    lastOfferedSourcesRef.current = [];
+    awaitingSourceConfirmationRef.current = false;
+    setIsShowingSourcePending(false);
     setMessages([]);
     setTranscription('');
     setInput('');
@@ -1555,7 +1640,12 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         </div>
         <div className="z-10 flex flex-col items-center gap-8 md:gap-12 w-full max-w-2xl">
           <div className="relative">
-            <VoiceOrb isSpeaking={isSpeaking} isThinking={isThinking} onClick={isSpeaking ? stopAudioPlayback : undefined} />
+            <VoiceOrb 
+              isSpeaking={isSpeaking} 
+              isThinking={isThinking} 
+              isShowingSourcePending={isShowingSourcePending}
+              onClick={isSpeaking ? stopAudioPlayback : undefined} 
+            />
             {/* Hidden video element for frame capture */}
             <video 
               ref={videoRef} 
