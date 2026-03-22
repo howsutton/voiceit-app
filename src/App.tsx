@@ -2353,48 +2353,52 @@ const BillingView = ({ effectiveUser, projects, accounts, analytics }: { effecti
           <div className="relative">
             {/* Y-axis grid lines */}
             <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-8 pt-8">
-              {[0, 1, 2, 3, 4].map(i => {
+              {(() => {
                 const maxSpent = Math.max(...accounts.map(a => a.totalSpentUsd || 0), 1);
-                const val = maxSpent * (4-i)/4;
-                return (
-                  <div key={i} className="w-full border-t border-slate-50 flex items-center">
-                    <span className="text-[8px] text-slate-300 -ml-8 w-6 text-right pr-2">
-                      ${val > 1 ? val.toFixed(0) : val.toFixed(2)}
-                    </span>
-                  </div>
-                );
-              })}
+                return [0, 1, 2, 3, 4].map(i => {
+                  const val = maxSpent * (4-i)/4;
+                  return (
+                    <div key={i} className="w-full border-t border-slate-50 flex items-center">
+                      <span className="text-[8px] text-slate-300 -ml-8 w-6 text-right pr-2">
+                        ${val >= 1 ? val.toFixed(0) : val.toFixed(2)}
+                      </span>
+                    </div>
+                  );
+                });
+              })()}
             </div>
 
             <div className="overflow-x-auto pb-4 scrollbar-hide">
               <div className="h-48 md:h-64 flex items-end gap-2 md:gap-4 pt-8 min-w-max px-2">
-                {accounts.map((acc) => {
+                {(() => {
                   const maxSpent = Math.max(...accounts.map(a => a.totalSpentUsd || 0), 1);
-                  const rawHeight = ((acc.totalSpentUsd || 0) / maxSpent) * 100;
-                  // Ensure bars are visible even for very small amounts (min 2% height if > 0)
-                  const height = acc.totalSpentUsd > 0 ? Math.max(rawHeight, 2) : 0;
-                  return (
-                    <div key={acc.id} className="w-16 md:w-24 flex flex-col items-center gap-2 group relative">
-                      <div className="w-full relative flex flex-col justify-end h-full">
-                        <motion.div 
-                          initial={{ height: 0 }}
-                          animate={{ height: `${height}%` }}
-                          className={`w-full rounded-t-xl transition-all relative ${acc.totalSpentUsd > acc.monthly_limit_usd ? 'bg-red-500' : 'bg-indigo-500 group-hover:bg-indigo-400'}`}
-                        >
-                          <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[9px] font-bold text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                            ${acc.totalSpentUsd?.toFixed(2)}
+                  return accounts.map((acc) => {
+                    const rawHeight = ((acc.totalSpentUsd || 0) / maxSpent) * 100;
+                    // Ensure bars are visible even for very small amounts (min 2% height if > 0)
+                    const height = acc.totalSpentUsd > 0 ? Math.max(rawHeight, 2) : 0;
+                    return (
+                      <div key={acc.id} className="w-16 md:w-24 flex flex-col items-center gap-2 group relative h-full">
+                        <div className="w-full relative flex flex-col justify-end flex-1">
+                          <motion.div 
+                            initial={{ height: 0 }}
+                            animate={{ height: `${height}%` }}
+                            className={`w-full rounded-t-xl relative ${acc.totalSpentUsd > acc.monthly_limit_usd ? 'bg-red-500' : 'bg-indigo-500 group-hover:bg-indigo-400'}`}
+                          >
+                            <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[9px] font-bold text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                              ${acc.totalSpentUsd?.toFixed(2)}
+                            </div>
+                          </motion.div>
+                          <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded whitespace-nowrap z-10 shadow-xl pointer-events-none">
+                            ${acc.totalSpentUsd?.toFixed(2)} / ${acc.monthly_limit_usd?.toFixed(0)}
                           </div>
-                        </motion.div>
-                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded whitespace-nowrap z-10 shadow-xl pointer-events-none">
-                          ${acc.totalSpentUsd?.toFixed(2)} / ${acc.monthly_limit_usd?.toFixed(0)}
                         </div>
+                        <span className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate w-full text-center px-1" title={acc.name}>
+                          {acc.name}
+                        </span>
                       </div>
-                      <span className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate w-full text-center px-1" title={acc.name}>
-                        {acc.name}
-                      </span>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
             </div>
           </div>
