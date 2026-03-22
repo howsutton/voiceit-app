@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Mic, MicOff, Send, BookOpen, User as UserIcon, Settings, 
@@ -3024,7 +3024,7 @@ const AdminDashboard = ({
 
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     console.log("fetchData: Starting Promise.all for projects, users, analytics, accounts, settings...");
     try {
       const headers = { 'x-user-id': effectiveUserId };
@@ -3036,40 +3036,48 @@ const AdminDashboard = ({
         fetch(`${API_BASE}/api/settings`, { headers }).then(r => r)
       ]);
       
-      if (!pRes.ok || !uRes.ok || !aRes.ok || !accRes.ok || !sRes.ok) {
-        setAnalytics(null);
-        return;
+      // Handle each response individually to avoid getting stuck if some fail (e.g. 403 on first load)
+      if (pRes.ok) {
+        const projects = await pRes.json();
+        setProjects(projects);
       }
-
-      const projects = await pRes.json();
-      const users = await uRes.json();
-      const analytics = await aRes.json();
-      const accounts = await accRes.json();
-      const settings = await sRes.json();
       
-      setProjects(projects);
-      setUsers(users);
-      setAnalytics(analytics);
-      setAccounts(accounts);
-
-      // Extract settings
-      if (settings.session_timeout) setSessionTimeout(parseInt(settings.session_timeout));
-      if (settings.billing_voice_rate_per_minute) setBillingVoiceRate(parseFloat(settings.billing_voice_rate_per_minute));
-      if (settings.billing_text_rate_per_1000_chars) setBillingTextRate(parseFloat(settings.billing_text_rate_per_1000_chars));
-
-      // Set initial current user if not set
-      if (!currentUser && users.length > 0) {
-        // Find the first admin or just the first user for demo purposes
-        const admin = users.find((u: UserType) => u.role === 'admin');
-        setCurrentUser(admin || users[0]);
+      if (uRes.ok) {
+        const users = await uRes.json();
+        setUsers(users);
+        // Set initial current user if not set
+        if (!currentUser && users.length > 0) {
+          const admin = users.find((u: UserType) => u.role === 'admin');
+          setCurrentUser(admin || users[0]);
+        }
       }
+
+      if (aRes.ok) {
+        const analytics = await aRes.json();
+        setAnalytics(analytics);
+      } else {
+        setAnalytics(null);
+      }
+
+      if (accRes.ok) {
+        const accounts = await accRes.json();
+        setAccounts(accounts);
+      }
+
+      if (sRes.ok) {
+        const settings = await sRes.json();
+        if (settings.session_timeout) setSessionTimeout(parseInt(settings.session_timeout));
+        if (settings.billing_voice_rate_per_minute) setBillingVoiceRate(parseFloat(settings.billing_voice_rate_per_minute));
+        if (settings.billing_text_rate_per_1000_chars) setBillingTextRate(parseFloat(settings.billing_text_rate_per_1000_chars));
+      }
+
       setIsInitialLoading(false);
     } catch (error) {
       console.error("Fetch data failed:", error);
       setAnalytics(null);
       setIsInitialLoading(false);
     }
-  };
+  }, [effectiveUserId, currentUser]);
 
   const fetchAccountAnalytics = async (accountId: string) => {
     try {
@@ -3098,7 +3106,7 @@ const AdminDashboard = ({
       .catch(err => console.error("Server Health Check Failed:", err));
 
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const handleCreateProject = async () => {
     if (!newProject.title) return;
