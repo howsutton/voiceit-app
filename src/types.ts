@@ -7,6 +7,9 @@ export interface Account {
   monthly_limit_usd?: number;
   warning_threshold_percent?: number;
   hard_stop_enabled?: boolean;
+  totalSpentUsd?: number;
+  balance?: number;
+  status?: string;
 }
 
 export interface Project {

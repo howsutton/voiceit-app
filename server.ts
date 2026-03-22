@@ -142,6 +142,11 @@ async function startServer() {
     } catch (e) {}
 
     try {
+      db.prepare("ALTER TABLE sessions ADD COLUMN mode TEXT DEFAULT 'text'").run();
+      console.log("Added mode column to sessions table.");
+    } catch (e) {}
+
+    try {
       db.prepare("ALTER TABLE messages ADD COLUMN sentiment TEXT").run();
       console.log("Added sentiment column to messages table.");
     } catch (e) {}
@@ -450,12 +455,38 @@ async function startServer() {
       const userId = req.headers['x-user-id'] as string;
       const user = userId ? db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any : null;
       
+      let accounts;
       if (user && user.role !== 'admin') {
-        const account = db.prepare("SELECT * FROM accounts WHERE id = ?").all(user.account_id);
-        return res.json(account);
+        accounts = db.prepare(`
+          SELECT a.*, 
+                 COALESCE((SELECT SUM(cost_usd) FROM usage_logs WHERE account_id = a.id), 0) as totalSpentUsd
+          FROM accounts a WHERE id = ?
+        `).all(user.account_id);
+      } else {
+        accounts = db.prepare(`
+          SELECT a.*, 
+                 COALESCE((SELECT SUM(cost_usd) FROM usage_logs WHERE account_id = a.id), 0) as totalSpentUsd
+          FROM accounts a
+        `).all();
       }
-      const accounts = db.prepare("SELECT * FROM accounts").all();
-      res.json(accounts);
+
+      const enrichedAccounts = accounts.map((acc: any) => {
+        const totalSpent = acc.totalSpentUsd || 0;
+        const limit = acc.monthly_limit_usd || 100.0;
+        const warningThreshold = (acc.warning_threshold_percent || 80) / 100;
+        
+        let status = 'active';
+        if (totalSpent >= limit) status = 'capped';
+        else if (totalSpent >= limit * warningThreshold) status = 'warning';
+
+        return {
+          ...acc,
+          balance: limit - totalSpent,
+          status
+        };
+      });
+
+      res.json(enrichedAccounts);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch accounts" });
     }
@@ -668,9 +699,9 @@ async function startServer() {
 
   app.post("/api/sessions", checkDb, (req, res) => {
     try {
-      const { projectId } = req.body;
+      const { projectId, mode } = req.body;
       const id = Math.random().toString(36).substring(7);
-      db.prepare("INSERT INTO sessions (id, project_id) VALUES (?, ?)").run(id, projectId);
+      db.prepare("INSERT INTO sessions (id, project_id, mode) VALUES (?, ?, ?)").run(id, projectId, mode || 'text');
       res.json({ id });
     } catch (err) {
       res.status(500).json({ error: "Failed to create session" });
@@ -735,9 +766,9 @@ async function startServer() {
         let units = content.length;
         let cost = (units / 1000) * textRate;
 
-        if (voice_seconds) {
+        if (voice_seconds || session.mode === 'voice') {
           type = 'voice';
-          units = voice_seconds;
+          units = voice_seconds || 5; // 5s fallback as requested
           cost = (units / 60) * voiceRate;
         }
 

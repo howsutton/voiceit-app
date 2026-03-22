@@ -678,7 +678,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         const res = await fetch(`${API_BASE}/api/sessions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectId: project.id })
+          body: JSON.stringify({ projectId: project.id, mode: isVoiceMode ? 'voice' : 'text' })
         });
         if (res.ok) {
           const data = await res.json();
@@ -2090,20 +2090,74 @@ const BillingView = ({ effectiveUser, projects, accounts, analytics }: { effecti
           <p className="text-3xl font-bold text-slate-900 tracking-tight">${analytics?.billing?.textSpentUsd.toFixed(2) || '0.00'}</p>
           <p className="text-xs text-slate-400 mt-1">{analytics?.billing?.textCharacters.toLocaleString() || 0} chars processed</p>
         </div>
+      </div>
 
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-          <div className="flex justify-between items-start mb-4">
-            <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
-              <TrendingUp className="w-6 h-6" />
-            </div>
-            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg uppercase tracking-wider">Budget Status</span>
-          </div>
-          <p className="text-3xl font-bold text-slate-900 tracking-tight">
-            {analytics?.billing?.monthlyLimitUsd ? 
-              `${((analytics.billing.totalSpentUsd / analytics.billing.monthlyLimitUsd) * 100).toFixed(1)}%` : 
-              'N/A'}
-          </p>
-          <p className="text-xs text-slate-400 mt-1">Of ${analytics?.billing?.monthlyLimitUsd?.toFixed(2) || '0.00'} limit</p>
+      {/* Account Spend Bar Graph */}
+      <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm">
+        <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Total Spend per Account</h3>
+        <div className="h-48 md:h-64 flex items-end gap-2 md:gap-4 pt-8">
+          {accounts.map((acc) => {
+            const maxSpent = Math.max(...accounts.map(a => a.totalSpentUsd || 0), 1);
+            const height = ((acc.totalSpentUsd || 0) / maxSpent) * 100;
+            return (
+              <div key={acc.id} className="flex-1 flex flex-col items-center gap-2 group relative">
+                <div className="w-full relative flex flex-col justify-end h-full">
+                  <motion.div 
+                    initial={{ height: 0 }}
+                    animate={{ height: `${height}%` }}
+                    className={`w-full rounded-t-xl transition-all ${acc.totalSpentUsd > acc.monthly_limit_usd ? 'bg-red-500' : 'bg-indigo-500 group-hover:bg-indigo-400'}`}
+                  />
+                  <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded whitespace-nowrap z-10 shadow-xl">
+                    ${acc.totalSpentUsd?.toFixed(2)}
+                  </div>
+                </div>
+                <span className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate w-full text-center">{acc.name}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Account Summary Table */}
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-slate-50">
+          <h3 className="text-sm font-bold text-slate-900">Account Summary</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50/50 border-b border-slate-100">
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account Name</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Monthly Limit</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Spent</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Balance</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {accounts.map((acc) => (
+                <tr key={acc.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-6 py-4 font-bold text-slate-900 text-sm">{acc.name}</td>
+                  <td className="px-6 py-4 text-sm text-slate-600">${acc.monthly_limit_usd?.toFixed(2)}</td>
+                  <td className="px-6 py-4 text-sm font-bold text-slate-900">${acc.totalSpentUsd?.toFixed(2)}</td>
+                  <td className="px-6 py-4">
+                    <span className={`text-sm font-bold ${acc.balance < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                      ${acc.balance?.toFixed(2)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${
+                      acc.status === 'capped' ? 'bg-red-50 text-red-600' : 
+                      acc.status === 'warning' ? 'bg-amber-50 text-amber-600' : 
+                      'bg-emerald-50 text-emerald-600'
+                    }`}>
+                      {acc.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -3465,6 +3519,7 @@ const AdminDashboard = ({
                       <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Account Name</th>
                       <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Projects</th>
                       <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Users</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Balance</th>
                       <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Actions</th>
                     </tr>
                   </thead>
@@ -3484,6 +3539,11 @@ const AdminDashboard = ({
                         </td>
                         <td className="px-6 py-4 text-xs text-slate-500">
                           {users.filter(u => u.account_id === acc.id).length} Users
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`text-sm font-bold ${acc.balance < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                            ${acc.balance?.toFixed(2) || '0.00'}
+                          </span>
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex justify-end gap-3">
