@@ -1,4 +1,5 @@
 import express from "express";
+import fs from "fs";
 import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
@@ -30,6 +31,13 @@ async function startServer() {
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
   }));
   app.use(express.json());
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
+  // Ensure uploads directory exists
+  const uploadsDir = path.join(process.cwd(), 'uploads', 'documents');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
   app.use(express.urlencoded({ extended: true }));
 
   let db: any;
@@ -125,6 +133,16 @@ async function startServer() {
     try {
       db.prepare("ALTER TABLE documents ADD COLUMN content TEXT").run();
       console.log("Added content column to documents table.");
+    } catch (e) {}
+
+    // Add file storage columns to documents table
+    try {
+      db.prepare("ALTER TABLE documents ADD COLUMN original_filename TEXT").run();
+      db.prepare("ALTER TABLE documents ADD COLUMN stored_filename TEXT").run();
+      db.prepare("ALTER TABLE documents ADD COLUMN file_path TEXT").run();
+      db.prepare("ALTER TABLE documents ADD COLUMN file_url TEXT").run();
+      db.prepare("ALTER TABLE documents ADD COLUMN mime_type TEXT").run();
+      console.log("Added file storage columns to documents table.");
     } catch (e) {}
 
     // Account Model Patch Migrations
@@ -329,10 +347,23 @@ async function startServer() {
           }
 
           const id = 'doc_' + Math.random().toString(36).substring(7);
-          db.prepare("INSERT INTO documents (id, project_id, title, content, page_count) VALUES (?, ?, ?, ?, ?)")
-            .run(id, req.params.id, title, content, pageCount);
           
-          results.push({ id, title, pageCount });
+          // Save file to disk if it's a real file upload
+          let fileUrl = null;
+          let storedFilename = null;
+          let filePath = null;
+          
+          if (file.buffer) {
+            storedFilename = `${id}_${title.replace(/[^a-z0-9.]/gi, '_').toLowerCase()}`;
+            filePath = path.join(uploadsDir, storedFilename);
+            fs.writeFileSync(filePath, file.buffer);
+            fileUrl = `/uploads/documents/${storedFilename}`;
+          }
+
+          db.prepare("INSERT INTO documents (id, project_id, title, content, page_count, original_filename, stored_filename, file_path, file_url, mime_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+            .run(id, req.params.id, title, content, pageCount, title, storedFilename, filePath, fileUrl, file.mimetype);
+          
+          results.push({ id, title, pageCount, fileUrl });
         }
       } else if (req.body.content) {
         const title = req.body.title || "Untitled Document";
@@ -525,6 +556,12 @@ async function startServer() {
 
   app.get("/api/settings", checkDb, (req, res) => {
     try {
+      const userId = req.headers['x-user-id'] as string;
+      const user = userId ? db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any : null;
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ error: "Forbidden: Admin access required" });
+      }
+
       const settings = db.prepare("SELECT * FROM settings").all();
       const settingsObj = settings.reduce((acc: any, s: any) => {
         acc[s.key] = s.value;
@@ -538,6 +575,12 @@ async function startServer() {
 
   app.post("/api/settings", checkDb, (req, res) => {
     try {
+      const userId = req.headers['x-user-id'] as string;
+      const user = userId ? db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any : null;
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ error: "Forbidden: Admin access required" });
+      }
+
       const { key, value } = req.body;
       db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
         .run(key, String(value));
@@ -1284,7 +1327,7 @@ async function startServer() {
       }
 
       // Filter documents to only include those used in the session
-      const allDocs = db.prepare("SELECT id, title, page_count FROM documents WHERE project_id = ?").all(session.project_id) as any[];
+      const allDocs = db.prepare("SELECT id, title, page_count, file_url, original_filename, mime_type FROM documents WHERE project_id = ?").all(session.project_id) as any[];
       const docs = allDocs.filter(d => usedSourceTitles.has(d.title));
       
       res.json({

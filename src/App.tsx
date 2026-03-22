@@ -5,6 +5,7 @@ import {
   LayoutDashboard, FileText, Activity, LogOut,
   ChevronRight, ChevronLeft, Volume2, Search, Info, Camera, Trash2,
   Clock, RefreshCw, Plus, CheckCircle2, Phone, Mail, Printer, Download,
+  ExternalLink,
   Building2, Smile, Meh, Frown, Hash, MessageSquare, CreditCard, TrendingUp, AlertCircle,
   AlertTriangle, Ban
 } from 'lucide-react';
@@ -151,10 +152,25 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
                       <FileText className="w-6 h-6" />
                     </div>
                     <div>
-                      <span className="font-bold text-slate-800 block">{doc.title}</span>
-                      <span className="text-xs text-slate-400 uppercase tracking-wider">{doc.page_count} Pages</span>
+                      <h3 className="font-bold text-slate-900">{doc.title}</h3>
+                      <p className="text-xs text-slate-500">{doc.page_count} pages • {doc.mime_type || 'Document'}</p>
                     </div>
                   </div>
+                  {doc.file_url ? (
+                    <a 
+                      href={doc.file_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-all"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      View Document
+                    </a>
+                  ) : (
+                    <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 text-slate-400 rounded-xl text-xs font-bold italic">
+                      No link available
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -404,6 +420,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const hasPromptedRef = useRef<boolean>(false);
   const lastSeenTimeRef = useRef<number | null>(null);
   const currentTurnRef = useRef<{ userText: string, modelText: string, sources: any[] }>({ userText: '', modelText: '', sources: [] });
+  const currentUserTranscriptRef = useRef('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -1100,17 +1117,19 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 
                 // Save the turn to backend if we have content
                 const currentSession = sessionRef.current;
-                if (currentSession && (currentTurnRef.current.userText || currentTurnRef.current.modelText)) {
+                const finalUserText = currentUserTranscriptRef.current || currentTurnRef.current.userText;
+                
+                if (currentSession && (finalUserText || currentTurnRef.current.modelText)) {
                   const saveTurn = async () => {
                     try {
                       // Save user message
-                      if (currentTurnRef.current.userText) {
+                      if (finalUserText) {
                         await fetch(`${API_BASE}/api/sessions/${currentSession}/messages`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ 
                             role: 'user', 
-                            content: currentTurnRef.current.userText 
+                            content: finalUserText 
                           })
                         });
                       }
@@ -1130,6 +1149,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       
                       // Reset for next turn
                       currentTurnRef.current = { userText: '', modelText: '', sources: [] };
+                      currentUserTranscriptRef.current = '';
                     } catch (e) {
                       console.warn("Failed to save turn to backend:", e);
                     }
@@ -1154,6 +1174,12 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
               if (message.serverContent?.inputTranscription?.text) {
                 const text = message.serverContent.inputTranscription.text;
                 setTranscription(text);
+                
+                // Track the longest transcript for this turn to ensure completeness
+                if (text.length > currentUserTranscriptRef.current.length) {
+                  currentUserTranscriptRef.current = text;
+                }
+                
                 currentTurnRef.current.userText = text;
                 lastActivityRef.current = Date.now();
                 hasPromptedRef.current = false;
@@ -1355,11 +1381,14 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     setSelectedSource(null);
     setConnectionStatus('idle');
     setRemainingSeconds(null);
-    lastSeenTimeRef.current = Date.now();
+    lastSeenTimeRef.current = null;
     hasPromptedRef.current = false;
     currentTurnRef.current = { userText: '', modelText: '', sources: [] };
+    currentUserTranscriptRef.current = '';
     setSession(null);
     sessionRef.current = null;
+    reconnectAttemptsRef.current = 0;
+    isReconnectingRef.current = false;
   };
 
   const handleSend = async (text: string) => {
@@ -2025,6 +2054,7 @@ const UsersView = ({ users, accounts, onRefresh, onImpersonate }: { users: UserT
 };
 
 const BillingView = ({ effectiveUser, projects, accounts, analytics }: { effectiveUser: UserType | null, projects: Project[], accounts: Account[], analytics: Analytics | null }) => {
+  const isAdmin = effectiveUser?.role === 'admin';
   const [billingLogs, setBillingLogs] = useState<UsageLogItem[]>([]);
   const [billingTotal, setBillingTotal] = useState(0);
   const [billingPage, setBillingPage] = useState(1);
@@ -2126,168 +2156,199 @@ const BillingView = ({ effectiveUser, projects, accounts, analytics }: { effecti
           <p className="text-xs text-slate-400 mt-1">{analytics?.billing?.textCharacters.toLocaleString() || 0} chars processed</p>
         </div>
 
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-          <div className="flex justify-between items-start mb-4">
-            <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
-              <AlertCircle className="w-6 h-6" />
+        {isAdmin && (
+          <>
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+              <div className="flex justify-between items-start mb-4">
+                <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg uppercase tracking-wider">Warning Threshold</span>
+              </div>
+              <p className="text-3xl font-bold text-slate-900 tracking-tight">{warningAccounts.length}</p>
+              <p className="text-xs text-slate-400 mt-1">Accounts near limit</p>
             </div>
-            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg uppercase tracking-wider">Warning Threshold</span>
-          </div>
-          <p className="text-3xl font-bold text-slate-900 tracking-tight">{warningAccounts.length}</p>
-          <p className="text-xs text-slate-400 mt-1">Accounts near limit</p>
-        </div>
 
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-          <div className="flex justify-between items-start mb-4">
-            <div className="p-3 bg-red-50 text-red-600 rounded-2xl">
-              <Ban className="w-6 h-6" />
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+              <div className="flex justify-between items-start mb-4">
+                <div className="p-3 bg-red-50 text-red-600 rounded-2xl">
+                  <Ban className="w-6 h-6" />
+                </div>
+                <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-1 rounded-lg uppercase tracking-wider">Suspended</span>
+              </div>
+              <p className="text-3xl font-bold text-slate-900 tracking-tight">{suspendedAccounts.length}</p>
+              <p className="text-xs text-slate-400 mt-1">Accounts capped/over</p>
             </div>
-            <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-1 rounded-lg uppercase tracking-wider">Suspended</span>
-          </div>
-          <p className="text-3xl font-bold text-slate-900 tracking-tight">{suspendedAccounts.length}</p>
-          <p className="text-xs text-slate-400 mt-1">Accounts capped/over</p>
-        </div>
+          </>
+        )}
       </div>
 
       {/* Top 5 Tables */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
-          <div className="p-6 border-b border-slate-50">
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-amber-500" />
-              Accounts in Warning Threshold
-            </h3>
-          </div>
-          <div className="flex-1 overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50/50 border-b border-slate-100">
-                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Limit</th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Spent</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {warningAccounts.sort((a, b) => (b.totalSpentUsd || 0) - (a.totalSpentUsd || 0)).slice(0, 5).map(acc => (
-                  <tr key={acc.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4 font-bold text-slate-900 text-xs">{acc.name}</td>
-                    <td className="px-6 py-4 text-xs text-slate-600">${acc.monthly_limit_usd?.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-xs font-bold text-slate-900 text-right">${acc.totalSpentUsd?.toFixed(2)}</td>
+      {isAdmin && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
+            <div className="p-6 border-b border-slate-50">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-500" />
+                Accounts in Warning Threshold
+              </h3>
+            </div>
+            <div className="flex-1 overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/50 border-b border-slate-100">
+                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Limit</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Spent</th>
                   </tr>
-                ))}
-                {warningAccounts.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="px-6 py-12 text-center text-xs text-slate-400 italic">No accounts in warning threshold</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {warningAccounts.sort((a, b) => (b.totalSpentUsd || 0) - (a.totalSpentUsd || 0)).slice(0, 5).map(acc => (
+                    <tr key={acc.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-6 py-4 font-bold text-slate-900 text-xs">{acc.name}</td>
+                      <td className="px-6 py-4 text-xs text-slate-600">${acc.monthly_limit_usd?.toFixed(2)}</td>
+                      <td className="px-6 py-4 text-xs font-bold text-slate-900 text-right">${acc.totalSpentUsd?.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                  {warningAccounts.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-12 text-center text-xs text-slate-400 italic">No accounts in warning threshold</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
 
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
-          <div className="p-6 border-b border-slate-50">
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <Ban className="w-4 h-4 text-red-500" />
-              Accounts Suspended
-            </h3>
-          </div>
-          <div className="flex-1 overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50/50 border-b border-slate-100">
-                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Limit</th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Spent</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {suspendedAccounts.sort((a, b) => (b.totalSpentUsd || 0) - (a.totalSpentUsd || 0)).slice(0, 5).map(acc => (
-                  <tr key={acc.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4 font-bold text-slate-900 text-xs">{acc.name}</td>
-                    <td className="px-6 py-4 text-xs text-slate-600">${acc.monthly_limit_usd?.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-xs font-bold text-red-600 text-right">${acc.totalSpentUsd?.toFixed(2)}</td>
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
+            <div className="p-6 border-b border-slate-50">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Ban className="w-4 h-4 text-red-500" />
+                Accounts Suspended
+              </h3>
+            </div>
+            <div className="flex-1 overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/50 border-b border-slate-100">
+                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Limit</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Spent</th>
                   </tr>
-                ))}
-                {suspendedAccounts.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="px-6 py-12 text-center text-xs text-slate-400 italic">No accounts suspended</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {suspendedAccounts.sort((a, b) => (b.totalSpentUsd || 0) - (a.totalSpentUsd || 0)).slice(0, 5).map(acc => (
+                    <tr key={acc.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-6 py-4 font-bold text-slate-900 text-xs">{acc.name}</td>
+                      <td className="px-6 py-4 text-xs text-slate-600">${acc.monthly_limit_usd?.toFixed(2)}</td>
+                      <td className="px-6 py-4 text-xs font-bold text-red-600 text-right">${acc.totalSpentUsd?.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                  {suspendedAccounts.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-12 text-center text-xs text-slate-400 italic">No accounts suspended</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Account Spend Bar Graph */}
-      <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm">
-        <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Total Spend per Account</h3>
-        <div className="h-48 md:h-64 flex items-end gap-2 md:gap-4 pt-8">
-          {accounts.map((acc) => {
-            const maxSpent = Math.max(...accounts.map(a => a.totalSpentUsd || 0), 1);
-            const height = ((acc.totalSpentUsd || 0) / maxSpent) * 100;
-            return (
-              <div key={acc.id} className="flex-1 flex flex-col items-center gap-2 group relative">
-                <div className="w-full relative flex flex-col justify-end h-full">
-                  <motion.div 
-                    initial={{ height: 0 }}
-                    animate={{ height: `${height}%` }}
-                    className={`w-full rounded-t-xl transition-all ${acc.totalSpentUsd > acc.monthly_limit_usd ? 'bg-red-500' : 'bg-indigo-500 group-hover:bg-indigo-400'}`}
-                  />
-                  <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded whitespace-nowrap z-10 shadow-xl">
-                    ${acc.totalSpentUsd?.toFixed(2)}
-                  </div>
+      {isAdmin && (
+        <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm">
+          <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Total Spend per Account</h3>
+          <div className="relative">
+            {/* Y-axis grid lines */}
+            <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-8 pt-8">
+              {[0, 1, 2, 3, 4].map(i => (
+                <div key={i} className="w-full border-t border-slate-50 flex items-center">
+                  <span className="text-[8px] text-slate-300 -ml-8 w-6 text-right pr-2">
+                    {analytics?.billing?.totalSpentUsd ? `$${((analytics.billing.totalSpentUsd * (4-i)/4)).toFixed(0)}` : ''}
+                  </span>
                 </div>
-                <span className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate w-full text-center">{acc.name}</span>
+              ))}
+            </div>
+
+            <div className="overflow-x-auto pb-4 scrollbar-hide">
+              <div className="h-48 md:h-64 flex items-end gap-2 md:gap-4 pt-8 min-w-max px-2">
+                {accounts.map((acc) => {
+                  const maxSpent = Math.max(...accounts.map(a => a.totalSpentUsd || 0), 1);
+                  const height = ((acc.totalSpentUsd || 0) / maxSpent) * 100;
+                  return (
+                    <div key={acc.id} className="w-16 md:w-24 flex flex-col items-center gap-2 group relative">
+                      <div className="w-full relative flex flex-col justify-end h-full">
+                        <motion.div 
+                          initial={{ height: 0 }}
+                          animate={{ height: `${height}%` }}
+                          className={`w-full rounded-t-xl transition-all relative ${acc.totalSpentUsd > acc.monthly_limit_usd ? 'bg-red-500' : 'bg-indigo-500 group-hover:bg-indigo-400'}`}
+                        >
+                          <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[9px] font-bold text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                            ${acc.totalSpentUsd?.toFixed(2)}
+                          </div>
+                        </motion.div>
+                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] font-bold px-2 py-1 rounded whitespace-nowrap z-10 shadow-xl pointer-events-none">
+                          ${acc.totalSpentUsd?.toFixed(2)} / ${acc.monthly_limit_usd?.toFixed(0)}
+                        </div>
+                      </div>
+                      <span className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate w-full text-center px-1" title={acc.name}>
+                        {acc.name}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Account Summary Table */}
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-50">
-          <h3 className="text-sm font-bold text-slate-900">Account Summary</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/50 border-b border-slate-100">
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account Name</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Monthly Limit</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Spent</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Balance</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {accounts.map((acc) => (
-                <tr key={acc.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-6 py-4 font-bold text-slate-900 text-sm">{acc.name}</td>
-                  <td className="px-6 py-4 text-sm text-slate-600">${acc.monthly_limit_usd?.toFixed(2)}</td>
-                  <td className="px-6 py-4 text-sm font-bold text-slate-900">${acc.totalSpentUsd?.toFixed(2)}</td>
-                  <td className="px-6 py-4">
-                    <span className={`text-sm font-bold ${acc.balance < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                      ${acc.balance?.toFixed(2)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${
-                      acc.status === 'capped' ? 'bg-red-50 text-red-600' : 
-                      acc.status === 'warning' ? 'bg-amber-50 text-amber-600' : 
-                      'bg-emerald-50 text-emerald-600'
-                    }`}>
-                      {acc.status}
-                    </span>
-                  </td>
+      {isAdmin && (
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-slate-50">
+            <h3 className="text-sm font-bold text-slate-900">Account Summary</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/50 border-b border-slate-100">
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account Name</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Monthly Limit</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Spent</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Balance</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {accounts.map((acc) => (
+                  <tr key={acc.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-6 py-4 font-bold text-slate-900 text-sm">{acc.name}</td>
+                    <td className="px-6 py-4 text-sm text-slate-600">${acc.monthly_limit_usd?.toFixed(2)}</td>
+                    <td className="px-6 py-4 text-sm font-bold text-slate-900">${acc.totalSpentUsd?.toFixed(2)}</td>
+                    <td className="px-6 py-4">
+                      <span className={`text-sm font-bold ${acc.balance < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        ${acc.balance?.toFixed(2)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${
+                        acc.status === 'capped' ? 'bg-red-50 text-red-600' : 
+                        acc.status === 'warning' ? 'bg-amber-50 text-amber-600' : 
+                        'bg-emerald-50 text-emerald-600'
+                      }`}>
+                        {acc.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
@@ -3271,7 +3332,7 @@ const AdminDashboard = ({
             { id: 'messages', icon: MessageSquare, label: 'Messages', roles: ['admin', 'user'] },
             { id: 'billing', icon: CreditCard, label: 'Billing', roles: ['admin', 'user'] },
             { id: 'users', icon: UserIcon, label: 'Users', roles: ['admin'] },
-            { id: 'settings', icon: Settings, label: 'Settings', roles: ['admin', 'user'] },
+            { id: 'settings', icon: Settings, label: 'Settings', roles: ['admin'] },
           ].filter(item => !item.roles || item.roles.includes(effectiveUser?.role || 'user')).map((item) => (
             <button
               key={item.id}
