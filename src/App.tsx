@@ -144,8 +144,8 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
           </h2>
           {summary.sources && summary.sources.length > 0 ? (
             <div className="grid grid-cols-1 gap-4">
-              {/* Deduplicate sources by title just in case */}
-              {Array.from(new Map(summary.sources.map((item: any) => [item.title, item])).values()).map((doc: any, i: number) => (
+              {/* Deduplicate sources by stable key */}
+              {Array.from(new Map(summary.sources.map((item: any) => [item.id || item.file_url || item.title, item])).values()).map((doc: any, i: number) => (
                 <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:border-indigo-300 transition-all shadow-sm">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-500 transition-all">
@@ -453,9 +453,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   useEffect(() => {
     const fetchBilling = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/account-billing-status?projectId=${project.id}`, {
-          headers: { 'x-user-id': 'kiosk' }
-        });
+        const res = await fetch(`${API_BASE}/api/projects/${project.id}/billing-status`);
         if (res.ok) {
           const data = await res.json();
           setBillingStatus(data);
@@ -1406,8 +1404,8 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 // 1. Awaiting SHOW confirmation
                 if (awaitingSourceConfirmationRef.current && lastOfferedSourcesRef.current.length > 0) {
                   const affirmativePatterns = [
-                    'yes', 'yeah', 'yep', 'sure', 'okay', 'ok', 'show me', 'open it', 
-                    'show source', 'yes please', 'please do', 'show it', 'open source'
+                    'yes', 'yeah', 'yep', 'yup', 'sure', 'okay', 'ok', 'show me', 'open it', 
+                    'show source', 'yes please', 'please do', 'show it', 'open source', 'please'
                   ];
                   
                   if (affirmativePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
@@ -1431,8 +1429,9 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                     setTimeout(() => setIsShowingSourcePending(false), 1000);
                     awaitingSourceConfirmationRef.current = false;
                     return; // Consume this transcript
-                  } else if (text.length > 15) {
-                    // If user says something long/substantive, expire the source offer window
+                  } else if (text.length > 25) {
+                    // If user says something longer/substantive, expire the source offer window
+                    // Increased threshold to be less fragile to noise
                     awaitingSourceConfirmationRef.current = false;
                   }
                 }
@@ -3824,34 +3823,66 @@ const AdminDashboard = ({
   const handleSaveSettings = async () => {
     setIsSavingSettings(true);
     try {
-      await Promise.all([
+      const responses = await Promise.all([
         fetch(`${API_BASE}/api/settings`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-user-id': effectiveUser?.id || ''
+          },
           body: JSON.stringify({ key: 'session_timeout', value: sessionTimeout })
         }),
         fetch(`${API_BASE}/api/settings`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-user-id': effectiveUser?.id || ''
+          },
           body: JSON.stringify({ key: 'billing_voice_rate_per_minute', value: billingVoiceRate })
         }),
         fetch(`${API_BASE}/api/settings`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-user-id': effectiveUser?.id || ''
+          },
           body: JSON.stringify({ key: 'billing_text_rate_per_1000_chars', value: billingTextRate })
         })
       ]);
-      // Optionally show a success toast or modal
-      setConfirmModal({
-        show: true,
-        title: 'Settings Saved',
-        message: 'Your system settings have been successfully updated.',
-        onConfirm: () => setConfirmModal(null),
-        confirmLabel: 'OK',
-        confirmColor: 'bg-indigo-600 hover:bg-indigo-700'
-      });
+
+      const allOk = responses.every(res => res.ok);
+
+      if (allOk) {
+        setConfirmModal({
+          show: true,
+          title: 'Settings Saved',
+          message: 'Your system settings have been successfully updated.',
+          onConfirm: () => setConfirmModal(null),
+          confirmLabel: 'OK',
+          confirmColor: 'bg-indigo-600 hover:bg-indigo-700'
+        });
+      } else {
+        const failed = responses.filter(r => !r.ok);
+        console.error("Some settings failed to save:", failed);
+        setConfirmModal({
+          show: true,
+          title: 'Save Failed',
+          message: 'One or more settings could not be saved. Please check your connection and try again.',
+          onConfirm: () => setConfirmModal(null),
+          confirmLabel: 'OK',
+          confirmColor: 'bg-red-600 hover:bg-red-700'
+        });
+      }
     } catch (error) {
       console.error("Failed to save settings:", error);
+      setConfirmModal({
+        show: true,
+        title: 'Error',
+        message: 'An unexpected error occurred while saving settings.',
+        onConfirm: () => setConfirmModal(null),
+        confirmLabel: 'OK',
+        confirmColor: 'bg-red-600 hover:bg-red-700'
+      });
     } finally {
       setIsSavingSettings(false);
     }

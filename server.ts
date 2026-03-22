@@ -611,6 +611,18 @@ async function startServer() {
     }
   });
 
+  app.get("/api/projects/:id/billing-status", checkDb, (req, res) => {
+    try {
+      const project = db.prepare("SELECT account_id FROM projects WHERE id = ?").get(req.params.id) as any;
+      if (!project) return res.status(404).json({ error: "Project not found" });
+      
+      const billing = getAccountBillingAccess(project.account_id);
+      res.json(billing);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch project billing status" });
+    }
+  });
+
   app.get("/api/settings", checkDb, (req, res) => {
     try {
       const userId = req.headers['x-user-id'] as string;
@@ -1388,25 +1400,28 @@ async function startServer() {
       // Filter documents to only include those used in the session
       const allDocs = db.prepare("SELECT id, title, page_count, file_url, original_filename, mime_type FROM documents WHERE project_id = ?").all(session.project_id) as any[];
       
-      // Collect all source titles from all QA turns in order of appearance
-      const orderedTitles: string[] = [];
-      const sessionSourceTitles = new Set<string>();
+      // Collect all unique documents used in the session based on sources mentioned in QA
+      const sessionDocsMap = new Map<string, any>();
+      const orderedDocIds: string[] = [];
+
       qa.forEach(turn => {
         turn.sources.forEach((s: any) => {
           if (s.documentTitle) {
             const normalizedTitle = s.documentTitle.trim().toLowerCase();
-            if (!sessionSourceTitles.has(normalizedTitle)) {
-              sessionSourceTitles.add(normalizedTitle);
-              orderedTitles.push(s.documentTitle);
+            // Try to find the document by title
+            const doc = allDocs.find(d => d.title.trim().toLowerCase() === normalizedTitle);
+            if (doc) {
+              const docKey = doc.id || doc.file_url || doc.title;
+              if (!sessionDocsMap.has(docKey)) {
+                sessionDocsMap.set(docKey, doc);
+                orderedDocIds.push(docKey);
+              }
             }
           }
         });
       });
       
-      const docs = orderedTitles.map(title => {
-        const normalizedTitle = title.trim().toLowerCase();
-        return allDocs.find(d => d.title.trim().toLowerCase() === normalizedTitle);
-      }).filter(Boolean);
+      const docs = orderedDocIds.map(id => sessionDocsMap.get(id)).filter(Boolean);
       
       res.json({
         sessionId: session.id,
