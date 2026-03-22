@@ -186,10 +186,18 @@ async function startServer() {
       const user = userId ? db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any : null;
       
       let projects;
+      const query = `
+        SELECT p.*, 
+               COALESCE((SELECT SUM(cost_usd) FROM usage_logs WHERE project_id = p.id AND type = 'voice'), 0) as voiceCreditUsedUsd,
+               COALESCE((SELECT SUM(cost_usd) FROM usage_logs WHERE project_id = p.id AND type = 'text'), 0) as textCreditUsedUsd,
+               COALESCE((SELECT SUM(cost_usd) FROM usage_logs WHERE project_id = p.id), 0) as totalCreditUsedUsd
+        FROM projects p
+      `;
+
       if (user && user.role !== 'admin') {
-        projects = db.prepare("SELECT * FROM projects WHERE account_id = ?").all(user.account_id);
+        projects = db.prepare(`${query} WHERE p.account_id = ?`).all(user.account_id);
       } else {
-        projects = db.prepare("SELECT * FROM projects").all();
+        projects = db.prepare(query).all();
       }
       res.json(projects);
     } catch (err) {

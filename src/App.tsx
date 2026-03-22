@@ -5,7 +5,8 @@ import {
   LayoutDashboard, FileText, Activity, LogOut,
   ChevronRight, ChevronLeft, Volume2, Search, Info, Camera, Trash2,
   Clock, RefreshCw, Plus, CheckCircle2, Phone, Mail, Printer, Download,
-  Building2, Smile, Meh, Frown, Hash, MessageSquare, CreditCard, TrendingUp, AlertCircle
+  Building2, Smile, Meh, Frown, Hash, MessageSquare, CreditCard, TrendingUp, AlertCircle,
+  AlertTriangle, Ban
 } from 'lucide-react';
 import { Project, Message, Document, Account, User as UserType, Analytics, ProjectMessageLogItem, GlobalMessageLogItem, UsageLogItem, PaginatedResponse } from './types';
 import { generateGroundedAnswer } from './services/aiService';
@@ -407,6 +408,9 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const intentionalCloseRef = useRef(false);
+  const reconnectTimeoutRef = useRef<any>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const isReconnectingRef = useRef(false);
 
   // Sync refs with state for use in callbacks
   useEffect(() => {
@@ -728,9 +732,13 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   };
 
   const connectLive = async (currentDocs?: Document[], isReturn: boolean = false) => {
-    if (isConnectingRef.current || connectionStatusRef.current === 'connected') {
+    if ((isConnectingRef.current && !isReconnectingRef.current) || connectionStatusRef.current === 'connected') {
       console.log("Already connecting or connected to Gemini Live, skipping.");
       return;
+    }
+    
+    if (!isReconnectingRef.current) {
+      reconnectAttemptsRef.current = 0;
     }
     
     const docsToUse = currentDocs || documents;
@@ -1189,13 +1197,36 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
           onclose: () => {
             console.log("Live session closed. Intentional:", intentionalCloseRef.current);
             if (!intentionalCloseRef.current && isPresentRef.current) {
-              console.warn("Unexpected session closure while user is present. Resetting state.");
+              console.warn("Unexpected session closure while user is present. Attempting reconnect.");
+              
+              // DO NOT reset the session if it's an unexpected close and user is present
+              if (reconnectAttemptsRef.current < 3) {
+                setConnectionStatus('connecting');
+                isReconnectingRef.current = true;
+                
+                if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+                reconnectTimeoutRef.current = setTimeout(() => {
+                  if (isPresentRef.current && !intentionalCloseRef.current) {
+                    reconnectAttemptsRef.current++;
+                    console.log(`Attempting reconnect #${reconnectAttemptsRef.current}...`);
+                    connectLive(docsToUse, isReturn);
+                  }
+                }, 1500);
+              } else {
+                console.error("Max reconnect attempts reached.");
+                setConnectionStatus('error');
+                setError("Connection lost. Please try again.");
+              }
+            } else {
               setConnectionStatus('idle');
-              isPresentRef.current = false;
-              setIsPresent(false);
+              if (!intentionalCloseRef.current) {
+                isPresentRef.current = false;
+                setIsPresent(false);
+              }
             }
             intentionalCloseRef.current = false;
             liveSessionRef.current = null;
+            isReconnectingRef.current = false;
           },
           onerror: (err) => {
             console.error("Live session error:", err);
@@ -1998,6 +2029,10 @@ const BillingView = ({ effectiveUser, projects, accounts, analytics }: { effecti
   const [billingTotal, setBillingTotal] = useState(0);
   const [billingPage, setBillingPage] = useState(1);
   const [billingTotalPages, setBillingTotalPages] = useState(1);
+  
+  const warningAccounts = useMemo(() => accounts.filter(acc => acc.status === 'warning'), [accounts]);
+  const suspendedAccounts = useMemo(() => accounts.filter(acc => acc.status === 'capped' || ((acc.totalSpentUsd || 0) >= (acc.monthly_limit_usd || 0))), [accounts]);
+
   const [billingFilters, setBillingFilters] = useState({
     search: '',
     type: '',
@@ -2089,6 +2124,99 @@ const BillingView = ({ effectiveUser, projects, accounts, analytics }: { effecti
           </div>
           <p className="text-3xl font-bold text-slate-900 tracking-tight">${analytics?.billing?.textSpentUsd.toFixed(2) || '0.00'}</p>
           <p className="text-xs text-slate-400 mt-1">{analytics?.billing?.textCharacters.toLocaleString() || 0} chars processed</p>
+        </div>
+
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg uppercase tracking-wider">Warning Threshold</span>
+          </div>
+          <p className="text-3xl font-bold text-slate-900 tracking-tight">{warningAccounts.length}</p>
+          <p className="text-xs text-slate-400 mt-1">Accounts near limit</p>
+        </div>
+
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-red-50 text-red-600 rounded-2xl">
+              <Ban className="w-6 h-6" />
+            </div>
+            <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-1 rounded-lg uppercase tracking-wider">Suspended</span>
+          </div>
+          <p className="text-3xl font-bold text-slate-900 tracking-tight">{suspendedAccounts.length}</p>
+          <p className="text-xs text-slate-400 mt-1">Accounts capped/over</p>
+        </div>
+      </div>
+
+      {/* Top 5 Tables */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
+          <div className="p-6 border-b border-slate-50">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-500" />
+              Accounts in Warning Threshold
+            </h3>
+          </div>
+          <div className="flex-1 overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/50 border-b border-slate-100">
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Limit</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Spent</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {warningAccounts.sort((a, b) => (b.totalSpentUsd || 0) - (a.totalSpentUsd || 0)).slice(0, 5).map(acc => (
+                  <tr key={acc.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-6 py-4 font-bold text-slate-900 text-xs">{acc.name}</td>
+                    <td className="px-6 py-4 text-xs text-slate-600">${acc.monthly_limit_usd?.toFixed(2)}</td>
+                    <td className="px-6 py-4 text-xs font-bold text-slate-900 text-right">${acc.totalSpentUsd?.toFixed(2)}</td>
+                  </tr>
+                ))}
+                {warningAccounts.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="px-6 py-12 text-center text-xs text-slate-400 italic">No accounts in warning threshold</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
+          <div className="p-6 border-b border-slate-50">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Ban className="w-4 h-4 text-red-500" />
+              Accounts Suspended
+            </h3>
+          </div>
+          <div className="flex-1 overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/50 border-b border-slate-100">
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Limit</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Spent</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {suspendedAccounts.sort((a, b) => (b.totalSpentUsd || 0) - (a.totalSpentUsd || 0)).slice(0, 5).map(acc => (
+                  <tr key={acc.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-6 py-4 font-bold text-slate-900 text-xs">{acc.name}</td>
+                    <td className="px-6 py-4 text-xs text-slate-600">${acc.monthly_limit_usd?.toFixed(2)}</td>
+                    <td className="px-6 py-4 text-xs font-bold text-red-600 text-right">${acc.totalSpentUsd?.toFixed(2)}</td>
+                  </tr>
+                ))}
+                {suspendedAccounts.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="px-6 py-12 text-center text-xs text-slate-400 italic">No accounts suspended</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -3568,6 +3696,7 @@ const AdminDashboard = ({
                     <tr>
                       <th className="px-4 md:px-6 py-4 text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider">Project Name</th>
                       <th className="px-4 md:px-6 py-4 text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider">Description</th>
+                      <th className="px-4 md:px-6 py-4 text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider">Credit Used</th>
                       <th className="px-4 md:px-6 py-4 text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider">Status</th>
                       <th className="px-4 md:px-6 py-4 text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Actions</th>
                     </tr>
@@ -3582,6 +3711,12 @@ const AdminDashboard = ({
                           </div>
                         </td>
                         <td className="px-4 md:px-6 py-4 text-[10px] md:text-xs text-slate-500 max-w-[200px] truncate">{proj.description}</td>
+                        <td className="px-4 md:px-6 py-4">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-bold text-slate-600">Voice: ${proj.voiceCreditUsedUsd?.toFixed(2) || '0.00'}</span>
+                            <span className="text-[10px] font-bold text-slate-600">Text: ${proj.textCreditUsedUsd?.toFixed(2) || '0.00'}</span>
+                          </div>
+                        </td>
                         <td className="px-4 md:px-6 py-4">
                           <span className="px-2 py-1 bg-emerald-50 text-emerald-700 text-[8px] md:text-[10px] font-bold rounded-full uppercase tracking-wider">Active</span>
                         </td>

@@ -18,6 +18,9 @@ export interface Project {
   title: string;
   description: string;
   instructions: string;
+  voiceCreditUsedUsd?: number;
+  textCreditUsedUsd?: number;
+  totalCreditUsedUsd?: number;
 }
 
 export interface Document {
