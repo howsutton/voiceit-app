@@ -817,9 +817,14 @@ async function startServer() {
         let units = content.length;
         let cost = (units / 1000) * textRate;
 
-        if (voice_seconds || session.mode === 'voice') {
+        if (voice_seconds) {
           type = 'voice';
-          units = voice_seconds || 5; // 5s fallback as requested
+          units = voice_seconds;
+          cost = (units / 60) * voiceRate;
+        } else if (session.mode === 'voice' && role === 'model') {
+          // Model responses in voice mode are voice by default
+          type = 'voice';
+          units = 5; // 5s fallback for model voice
           cost = (units / 60) * voiceRate;
         }
 

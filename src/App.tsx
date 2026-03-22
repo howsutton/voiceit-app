@@ -2263,20 +2263,26 @@ const BillingView = ({ effectiveUser, projects, accounts, analytics }: { effecti
           <div className="relative">
             {/* Y-axis grid lines */}
             <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-8 pt-8">
-              {[0, 1, 2, 3, 4].map(i => (
-                <div key={i} className="w-full border-t border-slate-50 flex items-center">
-                  <span className="text-[8px] text-slate-300 -ml-8 w-6 text-right pr-2">
-                    {analytics?.billing?.totalSpentUsd ? `$${((analytics.billing.totalSpentUsd * (4-i)/4)).toFixed(0)}` : ''}
-                  </span>
-                </div>
-              ))}
+              {[0, 1, 2, 3, 4].map(i => {
+                const maxSpent = Math.max(...accounts.map(a => a.totalSpentUsd || 0), 1);
+                const val = maxSpent * (4-i)/4;
+                return (
+                  <div key={i} className="w-full border-t border-slate-50 flex items-center">
+                    <span className="text-[8px] text-slate-300 -ml-8 w-6 text-right pr-2">
+                      ${val > 1 ? val.toFixed(0) : val.toFixed(2)}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="overflow-x-auto pb-4 scrollbar-hide">
               <div className="h-48 md:h-64 flex items-end gap-2 md:gap-4 pt-8 min-w-max px-2">
                 {accounts.map((acc) => {
                   const maxSpent = Math.max(...accounts.map(a => a.totalSpentUsd || 0), 1);
-                  const height = ((acc.totalSpentUsd || 0) / maxSpent) * 100;
+                  const rawHeight = ((acc.totalSpentUsd || 0) / maxSpent) * 100;
+                  // Ensure bars are visible even for very small amounts (min 2% height if > 0)
+                  const height = acc.totalSpentUsd > 0 ? Math.max(rawHeight, 2) : 0;
                   return (
                     <div key={acc.id} className="w-16 md:w-24 flex flex-col items-center gap-2 group relative">
                       <div className="w-full relative flex flex-col justify-end h-full">
