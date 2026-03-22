@@ -453,7 +453,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   useEffect(() => {
     const fetchBilling = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/account-billing-status`, {
+        const res = await fetch(`${API_BASE}/api/account-billing-status?projectId=${project.id}`, {
           headers: { 'x-user-id': 'kiosk' }
         });
         if (res.ok) {
@@ -467,7 +467,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     fetchBilling();
     const interval = setInterval(fetchBilling, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [project.id]);
 
   const billingAccessState = useMemo(() => {
     if (!billingStatus) return 'ok';

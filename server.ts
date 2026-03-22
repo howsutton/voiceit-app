@@ -592,9 +592,19 @@ async function startServer() {
   app.get("/api/account-billing-status", checkDb, (req, res) => {
     try {
       const userId = req.headers['x-user-id'] as string;
-      const user = userId ? db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any : null;
-      if (!user) return res.status(401).json({ error: "Unauthorized" });
-      const billing = getAccountBillingAccess(user.account_id);
+      const projectId = req.query.projectId as string;
+      let accountId: string | null = null;
+
+      if (userId === 'kiosk' && projectId) {
+        const project = db.prepare("SELECT account_id FROM projects WHERE id = ?").get(projectId) as any;
+        if (project) accountId = project.account_id;
+      } else {
+        const user = userId ? db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any : null;
+        if (user) accountId = user.account_id;
+      }
+
+      if (!accountId) return res.status(401).json({ error: "Unauthorized" });
+      const billing = getAccountBillingAccess(accountId);
       res.json(billing);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch billing status" });
@@ -1341,7 +1351,7 @@ async function startServer() {
 
       for (const msg of messages) {
         if (msg.role === 'user') {
-          if (currentTurn) {
+          if (currentTurn && (currentTurn.q || currentTurn.a)) {
             qa.push(currentTurn);
           }
           currentTurn = {
@@ -1354,22 +1364,26 @@ async function startServer() {
             currentTurn = { q: '', a: '', sources: [] };
           }
           currentTurn.a += (currentTurn.a ? '\n' : '') + msg.content;
-          const sources = JSON.parse(msg.sources_json || '[]') as any[];
-          sources.forEach(s => {
-            if (s.documentTitle) {
-              // Avoid duplicate sources in the same turn
-              if (!currentTurn.sources.some((existing: any) => 
-                existing.documentTitle === s.documentTitle && 
-                existing.pageNumber === s.pageNumber
-              )) {
-                currentTurn.sources.push(s);
+          try {
+            const sources = JSON.parse(msg.sources_json || '[]') as any[];
+            sources.forEach(s => {
+              if (s.documentTitle) {
+                // Avoid duplicate sources in the same turn
+                if (!currentTurn.sources.some((existing: any) => 
+                  existing.documentTitle === s.documentTitle && 
+                  existing.pageNumber === s.pageNumber
+                )) {
+                  currentTurn.sources.push(s);
+                }
               }
-            }
-          });
+            });
+          } catch (e) {
+            console.warn("Failed to parse sources_json:", msg.sources_json);
+          }
         }
       }
       
-      if (currentTurn) {
+      if (currentTurn && (currentTurn.q || currentTurn.a)) {
         qa.push(currentTurn);
       }
 
@@ -1381,14 +1395,20 @@ async function startServer() {
       const sessionSourceTitles = new Set<string>();
       qa.forEach(turn => {
         turn.sources.forEach((s: any) => {
-          if (s.documentTitle && !sessionSourceTitles.has(s.documentTitle)) {
-            sessionSourceTitles.add(s.documentTitle);
-            orderedTitles.push(s.documentTitle);
+          if (s.documentTitle) {
+            const normalizedTitle = s.documentTitle.trim().toLowerCase();
+            if (!sessionSourceTitles.has(normalizedTitle)) {
+              sessionSourceTitles.add(normalizedTitle);
+              orderedTitles.push(s.documentTitle);
+            }
           }
         });
       });
       
-      const docs = orderedTitles.map(title => allDocs.find(d => d.title === title)).filter(Boolean);
+      const docs = orderedTitles.map(title => {
+        const normalizedTitle = title.trim().toLowerCase();
+        return allDocs.find(d => d.title.trim().toLowerCase() === normalizedTitle);
+      }).filter(Boolean);
       
       res.json({
         sessionId: session.id,
