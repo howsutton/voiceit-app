@@ -1292,7 +1292,6 @@ async function startServer() {
       const messages = db.prepare("SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC").all(req.params.id) as any[];
       
       const qa = [];
-      const usedSourceTitles = new Set<string>();
       
       let currentTurn: any = null;
 
@@ -1314,7 +1313,6 @@ async function startServer() {
           const sources = JSON.parse(msg.sources_json || '[]') as any[];
           sources.forEach(s => {
             if (s.documentTitle) {
-              usedSourceTitles.add(s.documentTitle);
               // Avoid duplicate sources in the same turn
               if (!currentTurn.sources.some((existing: any) => 
                 existing.documentTitle === s.documentTitle && 
@@ -1333,7 +1331,20 @@ async function startServer() {
 
       // Filter documents to only include those used in the session
       const allDocs = db.prepare("SELECT id, title, page_count, file_url, original_filename, mime_type FROM documents WHERE project_id = ?").all(session.project_id) as any[];
-      const docs = allDocs.filter(d => usedSourceTitles.has(d.title));
+      
+      // Collect all source titles from all QA turns in order of appearance
+      const orderedTitles: string[] = [];
+      const sessionSourceTitles = new Set<string>();
+      qa.forEach(turn => {
+        turn.sources.forEach((s: any) => {
+          if (s.documentTitle && !sessionSourceTitles.has(s.documentTitle)) {
+            sessionSourceTitles.add(s.documentTitle);
+            orderedTitles.push(s.documentTitle);
+          }
+        });
+      });
+      
+      const docs = orderedTitles.map(title => allDocs.find(d => d.title === title)).filter(Boolean);
       
       res.json({
         sessionId: session.id,
