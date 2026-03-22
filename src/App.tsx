@@ -157,15 +157,25 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
                     </div>
                   </div>
                   {doc.file_url ? (
-                    <a 
-                      href={doc.file_url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-all"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      View Document
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <a 
+                        href={doc.file_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-all"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        View Document
+                      </a>
+                      <a 
+                        href={doc.file_url} 
+                        download={doc.original_filename || doc.title}
+                        className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-all"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Download
+                      </a>
+                    </div>
                   ) : (
                     <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 text-slate-400 rounded-xl text-xs font-bold italic">
                       No link available
@@ -429,6 +439,8 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const lastSeenTimeRef = useRef<number | null>(null);
   const currentTurnRef = useRef<{ userText: string, modelText: string, sources: any[] }>({ userText: '', modelText: '', sources: [] });
   const currentUserTranscriptRef = useRef('');
+  const latestTranscriptRef = useRef('');
+  const finalUserTranscriptRef = useRef('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -445,6 +457,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   // Source flow lifecycle state
   const sourceFlowStateRef = useRef<'idle' | 'awaiting_show_confirmation' | 'source_visible' | 'awaiting_read_confirmation' | 'reading_source' | 'awaiting_post_source_action'>('idle');
   const lastReadConfirmationSourceKeyRef = useRef<string | null>(null);
+  const lastReadPromptedSourceKeyRef = useRef<string | null>(null);
 
   // --- Source Flow Lifecycle Helpers ---
 
@@ -453,6 +466,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     setIsShowingSourcePending(false);
     awaitingSourceConfirmationRef.current = false;
     sourceFlowStateRef.current = 'idle';
+    lastReadPromptedSourceKeyRef.current = null;
   }, []);
 
   const openSource = useCallback((source: any) => {
@@ -474,14 +488,28 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       setSelectedSource(newSource);
     }
     
+    // Ensure it's tracked in the current turn for the summary
+    if (!currentTurnRef.current.sources.some((s: any) => 
+      s.documentTitle === newSource.documentTitle && 
+      s.pageNumber === newSource.pageNumber
+    )) {
+      currentTurnRef.current.sources.push(newSource);
+    }
+    
     setIsShowingSourcePending(false);
     awaitingSourceConfirmationRef.current = false;
     
     // Transition to awaiting read confirmation
     // Only if we haven't already asked for this specific source in this session
     const sourceKey = `${newSource.documentTitle}-${newSource.pageNumber}`;
-    if (lastReadConfirmationSourceKeyRef.current !== sourceKey) {
+    
+    // Check both answered and prompted guards
+    const alreadyPrompted = lastReadPromptedSourceKeyRef.current === sourceKey;
+    const alreadyAnswered = lastReadConfirmationSourceKeyRef.current === sourceKey;
+
+    if (!alreadyPrompted && !alreadyAnswered) {
       sourceFlowStateRef.current = 'awaiting_read_confirmation';
+      lastReadPromptedSourceKeyRef.current = sourceKey;
     } else {
       sourceFlowStateRef.current = 'source_visible';
     }
@@ -1182,6 +1210,30 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
               if (message.serverContent?.turnComplete) {
                 setTranscription('');
                 
+                // Select best final transcript: latest stable vs longest fragment
+                let bestTranscript = latestTranscriptRef.current;
+                if (currentUserTranscriptRef.current.length > latestTranscriptRef.current.length) {
+                  bestTranscript = currentUserTranscriptRef.current;
+                }
+
+                // Filter out source control utterances from summary
+                const normalizedTranscript = bestTranscript.toLowerCase().trim().replace(/[.,?!]/g, '');
+                const controlPhrases = [
+                  'yes', 'no', 'show me', 'yeah', 'yep', 'sure', 'okay', 'ok', 'open it', 
+                  'show source', 'yes please', 'please do', 'show it', 'open source',
+                  'no thanks', 'dont read', 'skip', 'not now', 'no dont', 'stop',
+                  'thats all', 'that is all', 'im done', 'i am done', 'goodbye', 
+                  'finish', 'done', 'close session', 'no thats all', 'no that is all', 
+                  'nothing else thanks'
+                ];
+                const isControlOnly = controlPhrases.some(p => normalizedTranscript === p);
+                
+                const finalUserText = isControlOnly ? '' : bestTranscript;
+
+                // Reset refs for next turn
+                latestTranscriptRef.current = '';
+                currentUserTranscriptRef.current = '';
+
                 // Track if this answer had sources to offer
                 if (currentTurnRef.current.sources.length > 0) {
                   lastOfferedSourcesRef.current = [...currentTurnRef.current.sources];
@@ -1191,19 +1243,19 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 
                 // Save the turn to backend if we have content
                 const currentSession = sessionRef.current;
-                const finalUserText = currentUserTranscriptRef.current || currentTurnRef.current.userText;
+                const finalUserTextToSave = finalUserText || (isControlOnly ? '' : currentTurnRef.current.userText);
                 
-                if (currentSession && (finalUserText || currentTurnRef.current.modelText)) {
+                if (currentSession && (finalUserTextToSave || currentTurnRef.current.modelText)) {
                   const saveTurn = async () => {
                     try {
                       // Save user message
-                      if (finalUserText) {
+                      if (finalUserTextToSave) {
                         await fetch(`${API_BASE}/api/sessions/${currentSession}/messages`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ 
                             role: 'user', 
-                            content: finalUserText 
+                            content: finalUserTextToSave 
                           })
                         });
                       }
@@ -1223,7 +1275,6 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       
                       // Reset for next turn
                       currentTurnRef.current = { userText: '', modelText: '', sources: [] };
-                      currentUserTranscriptRef.current = '';
                     } catch (e) {
                       console.warn("Failed to save turn to backend:", e);
                     }
@@ -1249,7 +1300,8 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 const text = message.serverContent.inputTranscription.text;
                 setTranscription(text);
                 
-                // Track the longest transcript for this turn to ensure completeness
+                // Track latest and longest for best final selection
+                latestTranscriptRef.current = text;
                 if (text.length > currentUserTranscriptRef.current.length) {
                   currentUserTranscriptRef.current = text;
                 }
@@ -1531,6 +1583,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     setIsShowingSourcePending(false);
     sourceFlowStateRef.current = 'idle';
     lastReadConfirmationSourceKeyRef.current = null;
+    lastReadPromptedSourceKeyRef.current = null;
     setSelectedSource(null);
     setMessages([]);
     setTranscription('');
@@ -1545,6 +1598,8 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     hasPromptedRef.current = false;
     currentTurnRef.current = { userText: '', modelText: '', sources: [] };
     currentUserTranscriptRef.current = '';
+    latestTranscriptRef.current = '';
+    finalUserTranscriptRef.current = '';
     setSession(null);
     sessionRef.current = null;
     reconnectAttemptsRef.current = 0;
@@ -1823,8 +1878,8 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         </AnimatePresence>
 
         {remainingSeconds !== null && (
-          <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[100]">
-            <div className={`px-4 py-2 rounded-2xl backdrop-blur-xl border-2 shadow-2xl flex items-center gap-3 transition-all duration-500 ${remainingSeconds < 10 ? 'bg-red-500/30 border-red-500 text-red-200 animate-pulse scale-110' : 'bg-white/10 border-white/20 text-white/80'}`}>
+          <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[150] pointer-events-none">
+            <div className={`px-4 py-2 rounded-2xl backdrop-blur-xl border-2 shadow-2xl flex items-center gap-3 transition-all duration-500 pointer-events-auto ${remainingSeconds < 10 ? 'bg-red-500/30 border-red-500 text-red-200 animate-pulse scale-110' : 'bg-white/10 border-white/20 text-white/80'}`}>
               <div className="relative">
                 <Clock className={`w-4 h-4 ${remainingSeconds < 10 ? 'animate-spin-slow' : ''}`} />
                 {remainingSeconds < 10 && <div className="absolute inset-0 bg-red-500 blur-sm animate-pulse rounded-full" />}
@@ -1941,8 +1996,8 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         </AnimatePresence>
 
         {remainingSeconds !== null && (
-          <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[100]">
-            <div className={`px-4 py-2 rounded-2xl backdrop-blur-xl border-2 shadow-2xl flex items-center gap-3 transition-all duration-500 ${remainingSeconds < 10 ? 'bg-red-500/30 border-red-500 text-red-200 animate-pulse scale-110' : 'bg-white/10 border-white/20 text-white/80'}`}>
+          <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[150] pointer-events-none">
+            <div className={`px-4 py-2 rounded-2xl backdrop-blur-xl border-2 shadow-2xl flex items-center gap-3 transition-all duration-500 pointer-events-auto ${remainingSeconds < 10 ? 'bg-red-500/30 border-red-500 text-red-200 animate-pulse scale-110' : 'bg-white/10 border-white/20 text-white/80'}`}>
               <div className="relative">
                 <Clock className={`w-4 h-4 ${remainingSeconds < 10 ? 'animate-spin-slow' : ''}`} />
                 {remainingSeconds < 10 && <div className="absolute inset-0 bg-red-500 blur-sm animate-pulse rounded-full" />}
