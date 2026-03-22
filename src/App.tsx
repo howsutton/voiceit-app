@@ -441,6 +441,56 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const lastOfferedSourcesRef = useRef<any[]>([]);
   const awaitingSourceConfirmationRef = useRef<boolean>(false);
   const [isShowingSourcePending, setIsShowingSourcePending] = useState(false);
+  
+  // Source flow lifecycle state
+  const sourceFlowStateRef = useRef<'idle' | 'awaiting_show_confirmation' | 'source_visible' | 'awaiting_read_confirmation' | 'reading_source' | 'awaiting_post_source_action'>('idle');
+  const lastReadConfirmationSourceKeyRef = useRef<string | null>(null);
+
+  // --- Source Flow Lifecycle Helpers ---
+
+  const clearSourceFlow = useCallback(() => {
+    setSelectedSource(null);
+    setIsShowingSourcePending(false);
+    awaitingSourceConfirmationRef.current = false;
+    sourceFlowStateRef.current = 'idle';
+  }, []);
+
+  const openSource = useCallback((source: any) => {
+    const newSource = {
+      id: 'source-' + Date.now(),
+      project_id: project.id,
+      title: source.documentTitle,
+      content: source.excerpt,
+      page_count: 1,
+      ...source
+    };
+
+    // Deduplicate: check if already showing this source
+    const isAlreadySelected = selectedSource && 
+      selectedSource.documentTitle === newSource.documentTitle && 
+      selectedSource.pageNumber === newSource.pageNumber;
+
+    if (!isAlreadySelected) {
+      setSelectedSource(newSource);
+    }
+    
+    setIsShowingSourcePending(false);
+    awaitingSourceConfirmationRef.current = false;
+    
+    // Transition to awaiting read confirmation
+    // Only if we haven't already asked for this specific source in this session
+    const sourceKey = `${newSource.documentTitle}-${newSource.pageNumber}`;
+    if (lastReadConfirmationSourceKeyRef.current !== sourceKey) {
+      sourceFlowStateRef.current = 'awaiting_read_confirmation';
+    } else {
+      sourceFlowStateRef.current = 'source_visible';
+    }
+  }, [project.id, selectedSource]);
+
+  const enterSummaryMode = useCallback(() => {
+    clearSourceFlow();
+    setShowSummary(true);
+  }, [clearSourceFlow]);
 
   // Sync refs with state for use in callbacks
   useEffect(() => {
@@ -914,6 +964,12 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         SESSION END INSTRUCTION:
         When all questions are asked and answers are given and sources are shown and closed, ask the user: "Is there anything else I can help you with today?".
         If the user indicates they are finished (e.g., "no", "I'm done", "goodbye"), call the 'showSummary' tool immediately.
+
+        SOURCE FLOW INSTRUCTION:
+        1. If you offer to show a source and the user says "yes", the frontend will show it immediately. You should then ask if they would like you to read it aloud.
+        2. If a source is currently visible and you ask whether the user wants it read aloud, interpret a simple "no" as "do not read the source", not as end-of-session. Then continue the conversation naturally.
+        3. Do not call showSource for the same source multiple times in a row.
+        4. When you ask "Is there anything else I can help you with today?" and the user says "no", then you should call 'showSummary'. But do not call it if they just said "no" to reading a source.
       `;
 
       const sessionPromise = currentAi.live.connect({
@@ -1061,21 +1117,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       excerpt: args.excerpt
                     };
                     
-                    // Deduplicate: check if already showing this source
-                    const isAlreadySelected = selectedSource && 
-                      selectedSource.documentTitle === newSource.documentTitle && 
-                      selectedSource.pageNumber === newSource.pageNumber;
-
-                    if (!isAlreadySelected) {
-                      setSelectedSource({
-                        id: 'source-' + Date.now(),
-                        project_id: project.id,
-                        title: args.documentTitle,
-                        content: args.excerpt,
-                        page_count: 1,
-                        ...newSource
-                      });
-                    }
+                    openSource(newSource);
                     
                     // Ensure it's in currentTurnRef sources if not already
                     if (!currentTurnRef.current.sources.some(s => s.documentTitle === newSource.documentTitle && s.pageNumber === newSource.pageNumber)) {
@@ -1108,7 +1150,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       }
                     });
                   } else if (call.name === 'closeSource') {
-                    setSelectedSource(null);
+                    clearSourceFlow();
                     sessionPromise.then(s => {
                       if (s) {
                         s.sendToolResponse({
@@ -1121,7 +1163,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       }
                     });
                   } else if (call.name === 'showSummary') {
-                    setShowSummary(true);
+                    enterSummaryMode();
                     sessionPromise.then(s => {
                       if (s) {
                         s.sendToolResponse({
@@ -1216,9 +1258,12 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 lastActivityRef.current = Date.now();
                 hasPromptedRef.current = false;
 
-                // Source offer handoff logic
+                const normalized = text.toLowerCase().trim().replace(/[.,?!]/g, '');
+
+                // --- Source Flow Lifecycle Handling ---
+
+                // 1. Awaiting SHOW confirmation
                 if (awaitingSourceConfirmationRef.current && lastOfferedSourcesRef.current.length > 0) {
-                  const normalized = text.toLowerCase().trim().replace(/[.,?!]/g, '');
                   const affirmativePatterns = [
                     'yes', 'yeah', 'yep', 'sure', 'okay', 'ok', 'show me', 'open it', 
                     'show source', 'yes please', 'please do', 'show it', 'open source'
@@ -1227,42 +1272,52 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                   if (affirmativePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
                     console.log("Affirmative source confirmation detected:", normalized);
                     const sourceToShow = lastOfferedSourcesRef.current[0];
+                    setIsShowingSourcePending(true);
+                    openSource(sourceToShow);
                     
-                    // Deduplicate: check if already showing this source
-                    const isAlreadySelected = selectedSource && 
-                      selectedSource.documentTitle === sourceToShow.documentTitle && 
-                      selectedSource.pageNumber === sourceToShow.pageNumber;
-
-                    if (!isAlreadySelected) {
-                      setIsShowingSourcePending(true);
-                      setSelectedSource({
-                        id: 'source-auto-' + Date.now(),
-                        project_id: project.id,
-                        title: sourceToShow.documentTitle,
-                        content: sourceToShow.excerpt,
-                        page_count: 1,
-                        ...sourceToShow
-                      });
-                      
-                      // Also ensure it's in the messages if not already there
-                      setMessages(prev => {
-                        const lastMsg = prev[prev.length - 1];
-                        if (lastMsg?.role === 'model') {
-                          const existingSources = lastMsg.sources || [];
-                          if (!existingSources.some(s => s.documentTitle === sourceToShow.documentTitle && s.pageNumber === sourceToShow.pageNumber)) {
-                            return [...prev.slice(0, -1), { ...lastMsg, sources: [...existingSources, sourceToShow] }];
-                          }
+                    // Also ensure it's in the messages if not already there
+                    setMessages(prev => {
+                      const lastMsg = prev[prev.length - 1];
+                      if (lastMsg?.role === 'model') {
+                        const existingSources = lastMsg.sources || [];
+                        if (!existingSources.some(s => s.documentTitle === sourceToShow.documentTitle && s.pageNumber === sourceToShow.pageNumber)) {
+                          return [...prev.slice(0, -1), { ...lastMsg, sources: [...existingSources, sourceToShow] }];
                         }
-                        return prev;
-                      });
+                      }
+                      return prev;
+                    });
 
-                      setTimeout(() => setIsShowingSourcePending(false), 1000);
-                    }
-                    
+                    setTimeout(() => setIsShowingSourcePending(false), 1000);
                     awaitingSourceConfirmationRef.current = false;
+                    return; // Consume this transcript
                   } else if (text.length > 15) {
                     // If user says something long/substantive, expire the source offer window
                     awaitingSourceConfirmationRef.current = false;
+                  }
+                }
+
+                // 2. Awaiting READ confirmation
+                if (selectedSource && sourceFlowStateRef.current === 'awaiting_read_confirmation') {
+                  const affirmativePatterns = ['yes', 'yeah', 'yep', 'sure', 'okay', 'ok', 'read it', 'please do', 'yes please', 'please read'];
+                  const negativePatterns = ['no', 'no thanks', 'dont read', 'skip', 'not now', 'no dont', 'stop'];
+
+                  if (affirmativePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
+                    console.log("Affirmative read confirmation detected:", normalized);
+                    sourceFlowStateRef.current = 'reading_source';
+                    lastReadConfirmationSourceKeyRef.current = `${selectedSource.documentTitle}-${selectedSource.pageNumber}`;
+                    // Let the model handle the reading via prompt instruction
+                  } else if (negativePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
+                    console.log("Negative read confirmation detected:", normalized);
+                    sourceFlowStateRef.current = 'awaiting_post_source_action';
+                    lastReadConfirmationSourceKeyRef.current = `${selectedSource.documentTitle}-${selectedSource.pageNumber}`;
+                    
+                    // Send a small signal to the model so it doesn't wait or treat "no" as session end
+                    sessionPromise.then(s => {
+                      if (s) {
+                        s.sendRealtimeInput({ text: "The user does not want the source read aloud. Continue the conversation naturally." });
+                      }
+                    });
+                    return; // Consume this transcript to prevent it being treated as session end
                   }
                 }
 
@@ -1324,9 +1379,11 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 console.error("Max reconnect attempts reached.");
                 setConnectionStatus('error');
                 setError("Connection lost. Please try again.");
+                clearSourceFlow();
               }
             } else {
               setConnectionStatus('idle');
+              clearSourceFlow(); // Clear source UI when session ends
               if (!intentionalCloseRef.current) {
                 isPresentRef.current = false;
                 setIsPresent(false);
@@ -1457,6 +1514,9 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     lastOfferedSourcesRef.current = [];
     awaitingSourceConfirmationRef.current = false;
     setIsShowingSourcePending(false);
+    sourceFlowStateRef.current = 'idle';
+    lastReadConfirmationSourceKeyRef.current = null;
+    setSelectedSource(null);
     setMessages([]);
     setTranscription('');
     setInput('');
