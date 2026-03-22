@@ -41,7 +41,26 @@ async function startServer() {
       CREATE TABLE IF NOT EXISTS accounts (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
-        branding_json TEXT
+        branding_json TEXT,
+        monthly_limit_usd REAL DEFAULT 100.0,
+        warning_threshold_percent INTEGER DEFAULT 80,
+        hard_stop_enabled BOOLEAN DEFAULT 1
+      );
+
+      CREATE TABLE IF NOT EXISTS usage_logs (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        message_id TEXT NOT NULL,
+        type TEXT NOT NULL, -- 'voice' or 'text'
+        units REAL NOT NULL, -- seconds for voice, chars for text
+        cost_usd REAL NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(account_id) REFERENCES accounts(id),
+        FOREIGN KEY(project_id) REFERENCES projects(id),
+        FOREIGN KEY(session_id) REFERENCES sessions(id),
+        FOREIGN KEY(message_id) REFERENCES messages(id)
       );
 
       CREATE TABLE IF NOT EXISTS projects (
@@ -113,6 +132,13 @@ async function startServer() {
       db.prepare("ALTER TABLE users ADD COLUMN account_id TEXT").run();
       db.prepare("UPDATE users SET account_id = 'acc_default' WHERE account_id IS NULL").run();
       console.log("Migrated users table for account scoping.");
+    } catch (e) {}
+
+    try {
+      db.prepare("ALTER TABLE accounts ADD COLUMN monthly_limit_usd REAL DEFAULT 100.0").run();
+      db.prepare("ALTER TABLE accounts ADD COLUMN warning_threshold_percent INTEGER DEFAULT 80").run();
+      db.prepare("ALTER TABLE accounts ADD COLUMN hard_stop_enabled BOOLEAN DEFAULT 1").run();
+      console.log("Added billing columns to accounts table.");
     } catch (e) {}
 
     try {
@@ -421,6 +447,13 @@ async function startServer() {
   // Accounts API
   app.get("/api/accounts", checkDb, (req, res) => {
     try {
+      const userId = req.headers['x-user-id'] as string;
+      const user = userId ? db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any : null;
+      
+      if (user && user.role !== 'admin') {
+        const account = db.prepare("SELECT * FROM accounts WHERE id = ?").all(user.account_id);
+        return res.json(account);
+      }
       const accounts = db.prepare("SELECT * FROM accounts").all();
       res.json(accounts);
     } catch (err) {
@@ -430,10 +463,10 @@ async function startServer() {
 
   app.post("/api/accounts", checkDb, (req, res) => {
     try {
-      const { name, branding_json } = req.body;
+      const { name, branding_json, monthly_limit_usd, warning_threshold_percent, hard_stop_enabled } = req.body;
       const id = 'acc_' + Math.random().toString(36).substring(7);
-      db.prepare("INSERT INTO accounts (id, name, branding_json) VALUES (?, ?, ?)")
-        .run(id, name, branding_json || '{}');
+      db.prepare("INSERT INTO accounts (id, name, branding_json, monthly_limit_usd, warning_threshold_percent, hard_stop_enabled) VALUES (?, ?, ?, ?, ?, ?)")
+        .run(id, name, branding_json || '{}', monthly_limit_usd || 100.0, warning_threshold_percent || 80, hard_stop_enabled ? 1 : 0);
       res.json({ id, name });
     } catch (err) {
       res.status(500).json({ error: "Failed to create account" });
@@ -442,9 +475,9 @@ async function startServer() {
 
   app.put("/api/accounts/:id", checkDb, (req, res) => {
     try {
-      const { name, branding_json } = req.body;
-      db.prepare("UPDATE accounts SET name = ?, branding_json = ? WHERE id = ?")
-        .run(name, branding_json || '{}', req.params.id);
+      const { name, branding_json, monthly_limit_usd, warning_threshold_percent, hard_stop_enabled } = req.body;
+      db.prepare("UPDATE accounts SET name = ?, branding_json = ?, monthly_limit_usd = ?, warning_threshold_percent = ?, hard_stop_enabled = ? WHERE id = ?")
+        .run(name, branding_json || '{}', monthly_limit_usd, warning_threshold_percent, hard_stop_enabled ? 1 : 0, req.params.id);
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Failed to update account" });
@@ -511,6 +544,17 @@ async function startServer() {
       const sentimentNeu = db.prepare("SELECT count(*) as count FROM messages WHERE sentiment = 'neutral'").get() as any;
       const sentimentNeg = db.prepare("SELECT count(*) as count FROM messages WHERE sentiment = 'negative'").get() as any;
 
+      // Billing analytics
+      const billing = db.prepare(`
+        SELECT 
+          SUM(cost_usd) as totalSpentUsd,
+          SUM(CASE WHEN type = 'voice' THEN cost_usd ELSE 0 END) as voiceSpentUsd,
+          SUM(CASE WHEN type = 'text' THEN cost_usd ELSE 0 END) as textSpentUsd,
+          SUM(CASE WHEN type = 'voice' THEN units ELSE 0 END) as voiceSeconds,
+          SUM(CASE WHEN type = 'text' THEN units ELSE 0 END) as textCharacters
+        FROM usage_logs
+      `).get() as any;
+
       res.json({
         dbConnected: true,
         totalSessions: totalSessions.count,
@@ -530,6 +574,13 @@ async function startServer() {
           correct: correctValue,
           clarifications: clarificationsValue,
           unknowns: unknownsValue
+        },
+        billing: {
+          totalSpentUsd: billing.totalSpentUsd || 0,
+          voiceSpentUsd: billing.voiceSpentUsd || 0,
+          textSpentUsd: billing.textSpentUsd || 0,
+          voiceSeconds: billing.voiceSeconds || 0,
+          textCharacters: billing.textCharacters || 0
         }
       });
     } catch (err) {
@@ -570,6 +621,20 @@ async function startServer() {
       const sentimentNeu = db.prepare("SELECT count(*) as count FROM messages m JOIN sessions s ON m.session_id = s.id JOIN projects p ON s.project_id = p.id WHERE p.account_id = ? AND m.sentiment = 'neutral'").get(accountId) as any;
       const sentimentNeg = db.prepare("SELECT count(*) as count FROM messages m JOIN sessions s ON m.session_id = s.id JOIN projects p ON s.project_id = p.id WHERE p.account_id = ? AND m.sentiment = 'negative'").get(accountId) as any;
 
+      // Billing analytics
+      const billing = db.prepare(`
+        SELECT 
+          SUM(cost_usd) as totalSpentUsd,
+          SUM(CASE WHEN type = 'voice' THEN cost_usd ELSE 0 END) as voiceSpentUsd,
+          SUM(CASE WHEN type = 'text' THEN cost_usd ELSE 0 END) as textSpentUsd,
+          SUM(CASE WHEN type = 'voice' THEN units ELSE 0 END) as voiceSeconds,
+          SUM(CASE WHEN type = 'text' THEN units ELSE 0 END) as textCharacters
+        FROM usage_logs
+        WHERE account_id = ?
+      `).get(accountId) as any;
+
+      const account = db.prepare("SELECT * FROM accounts WHERE id = ?").get(accountId) as any;
+
       res.json({
         totalSessions: totalSessions.count,
         totalMessages: totalMessages.count,
@@ -584,10 +649,15 @@ async function startServer() {
           neutral: sentimentNeu.count,
           negative: sentimentNeg.count
         },
-        distribution: {
-          correct: 85,
-          clarifications: 10,
-          unknowns: 5
+        billing: {
+          totalSpentUsd: billing.totalSpentUsd || 0,
+          voiceSpentUsd: billing.voiceSpentUsd || 0,
+          textSpentUsd: billing.textSpentUsd || 0,
+          voiceSeconds: billing.voiceSeconds || 0,
+          textCharacters: billing.textCharacters || 0,
+          monthlyLimitUsd: account?.monthly_limit_usd || 100.0,
+          warningThresholdPercent: account?.warning_threshold_percent || 80,
+          hardStopEnabled: !!account?.hard_stop_enabled
         }
       });
     } catch (err) {
@@ -618,9 +688,31 @@ async function startServer() {
 
   app.post("/api/sessions/:id/messages", checkDb, (req, res) => {
     try {
-      const { role, content, sources } = req.body;
+      const { role, content, sources, voice_seconds } = req.body;
       const msgId = Math.random().toString(36).substring(7);
       
+      // Check billing hard stop
+      const session = db.prepare(`
+        SELECT s.*, p.account_id 
+        FROM sessions s 
+        JOIN projects p ON s.project_id = p.id 
+        WHERE s.id = ?
+      `).get(req.params.id) as any;
+
+      if (session && role === 'model') {
+        const account = db.prepare("SELECT * FROM accounts WHERE id = ?").get(session.account_id) as any;
+        if (account && account.hard_stop_enabled) {
+          const usage = db.prepare("SELECT SUM(cost_usd) as total FROM usage_logs WHERE account_id = ?").get(session.account_id) as any;
+          const totalSpent = usage.total || 0;
+          if (totalSpent >= account.monthly_limit_usd) {
+            return res.status(402).json({ 
+              error: "Billing limit reached", 
+              message: "Your account has reached its monthly usage limit. Please contact your administrator to continue using VoiceIt AI services. We're here to help!" 
+            });
+          }
+        }
+      }
+
       let sentiment = null;
       if (role === 'user') {
         const positive = ["good", "great", "excellent", "happy", "thanks", "thank you", "helpful", "love", "awesome", "yes", "correct"];
@@ -633,8 +725,30 @@ async function startServer() {
 
       db.prepare("INSERT INTO messages (id, session_id, role, content, sources_json, sentiment) VALUES (?, ?, ?, ?, ?, ?)")
         .run(msgId, req.params.id, role, content, JSON.stringify(sources || []), sentiment);
+
+      // Log usage
+      if (session) {
+        const voiceRate = parseFloat(db.prepare("SELECT value FROM settings WHERE key = 'billing_voice_rate_per_minute'").get()?.value || "0.10");
+        const textRate = parseFloat(db.prepare("SELECT value FROM settings WHERE key = 'billing_text_rate_per_1000_chars'").get()?.value || "0.02");
+        
+        let type = 'text';
+        let units = content.length;
+        let cost = (units / 1000) * textRate;
+
+        if (voice_seconds) {
+          type = 'voice';
+          units = voice_seconds;
+          cost = (units / 60) * voiceRate;
+        }
+
+        const usageId = 'usage_' + Math.random().toString(36).substring(7);
+        db.prepare("INSERT INTO usage_logs (id, account_id, project_id, session_id, message_id, type, units, cost_usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+          .run(usageId, session.account_id, session.project_id, req.params.id, msgId, type, units, cost);
+      }
+
       res.json({ id: msgId, sentiment });
     } catch (err) {
+      console.error("Failed to save message:", err);
       res.status(500).json({ error: "Failed to save message" });
     }
   });
@@ -947,6 +1061,142 @@ async function startServer() {
     }
   });
 
+  app.get("/api/billing", checkDb, (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string;
+      const user = userId ? db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any : null;
+      
+      const { search, type, projectId, accountId, startDate, endDate, page = 1, limit = 50 } = req.query;
+      const offset = (Number(page) - 1) * Number(limit);
+
+      let query = `
+        SELECT u.*, p.title as project_title, a.name as account_name, m.content as message_content
+        FROM usage_logs u
+        JOIN accounts a ON u.account_id = a.id
+        JOIN projects p ON u.project_id = p.id
+        JOIN messages m ON u.message_id = m.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (user && user.role !== 'admin') {
+        query += ` AND u.account_id = ?`;
+        params.push(user.account_id);
+      }
+
+      if (search) {
+        query += ` AND m.content LIKE ?`;
+        params.push(`%${search}%`);
+      }
+      if (type) {
+        query += ` AND u.type = ?`;
+        params.push(type);
+      }
+      if (projectId) {
+        query += ` AND u.project_id = ?`;
+        params.push(projectId);
+      }
+      if (accountId) {
+        query += ` AND u.account_id = ?`;
+        params.push(accountId);
+      }
+      if (startDate) {
+        query += ` AND u.created_at >= ?`;
+        params.push(startDate);
+      }
+      if (endDate) {
+        query += ` AND u.created_at <= ?`;
+        params.push(endDate);
+      }
+
+      const countQuery = `SELECT COUNT(*) as count FROM (${query})`;
+      const total = (db.prepare(countQuery).get(...params) as any).count;
+
+      query += ` ORDER BY u.created_at DESC LIMIT ? OFFSET ?`;
+      params.push(Number(limit), offset);
+
+      const logs = db.prepare(query).all(...params) as any[];
+
+      res.json({
+        data: logs,
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / Number(limit))
+      });
+    } catch (err) {
+      console.error("Failed to fetch billing logs:", err);
+      res.status(500).json({ error: "Failed to fetch billing logs" });
+    }
+  });
+
+  app.get("/api/billing/export", checkDb, (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string;
+      const user = userId ? db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any : null;
+      
+      const { format = 'csv', search, type, projectId, accountId, startDate, endDate } = req.query;
+
+      let query = `
+        SELECT u.*, p.title as project_title, a.name as account_name, m.content as message_content
+        FROM usage_logs u
+        JOIN accounts a ON u.account_id = a.id
+        JOIN projects p ON u.project_id = p.id
+        JOIN messages m ON u.message_id = m.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (user && user.role !== 'admin') {
+        query += ` AND u.account_id = ?`;
+        params.push(user.account_id);
+      }
+
+      if (search) {
+        query += ` AND m.content LIKE ?`;
+        params.push(`%${search}%`);
+      }
+      if (type) {
+        query += ` AND u.type = ?`;
+        params.push(type);
+      }
+      if (projectId) {
+        query += ` AND u.project_id = ?`;
+        params.push(projectId);
+      }
+      if (accountId) {
+        query += ` AND u.account_id = ?`;
+        params.push(accountId);
+      }
+      if (startDate) {
+        query += ` AND u.created_at >= ?`;
+        params.push(startDate);
+      }
+      if (endDate) {
+        query += ` AND u.created_at <= ?`;
+        params.push(endDate);
+      }
+
+      query += ` ORDER BY u.created_at DESC`;
+      const logs = db.prepare(query).all(...params) as any[];
+
+      if (format === 'csv') {
+        const header = 'ID,Account,Project,Type,Units,Cost USD,Timestamp\n';
+        const rows = logs.map(l => {
+          return `${l.id},"${l.account_name}","${l.project_title}",${l.type},${l.units},${l.cost_usd},${l.created_at}`;
+        }).join('\n');
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=billing_export.csv`);
+        return res.send(header + rows);
+      }
+
+      res.json(logs);
+    } catch (err) {
+      console.error("Export failed:", err);
+      res.status(500).json({ error: "Failed to export billing logs" });
+    }
+  });
+
   app.get("/api/sessions/:id/summary", checkDb, (req, res) => {
     try {
       const session = db.prepare("SELECT * FROM sessions WHERE id = ?").get(req.params.id) as any;
@@ -1023,8 +1273,12 @@ async function startServer() {
       const projectCount = db.prepare("SELECT count(*) as count FROM projects").get() as any;
       if (projectCount.count === 0) {
         db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run('session_timeout', '180');
+        db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run('billing_voice_rate_per_minute', '0.10');
+        db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run('billing_text_rate_per_1000_chars', '0.02');
+        
         const accId = 'acc_default';
-        db.prepare("INSERT INTO accounts (id, name) VALUES (?, ?)").run(accId, "Global Enterprise");
+        db.prepare("INSERT INTO accounts (id, name, monthly_limit_usd, warning_threshold_percent, hard_stop_enabled) VALUES (?, ?, ?, ?, ?)")
+          .run(accId, "Global Enterprise", 100.0, 80, 1);
         const projId = 'proj_legal';
         db.prepare("INSERT INTO projects (id, account_id, title, description, instructions) VALUES (?, ?, ?, ?, ?)")
           .run(projId, accId, "Legal & Policy Library", "Institutional knowledge base for legal documents and internal policies.", "Answer only using the provided legal documents. Be precise and cite page numbers.");

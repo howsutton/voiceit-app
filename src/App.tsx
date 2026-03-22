@@ -5,9 +5,9 @@ import {
   LayoutDashboard, FileText, Activity, LogOut,
   ChevronRight, ChevronLeft, Volume2, Search, Info, Camera, Trash2,
   Clock, RefreshCw, Plus, CheckCircle2, Phone, Mail, Printer, Download,
-  Building2, Smile, Meh, Frown, Hash, MessageSquare
+  Building2, Smile, Meh, Frown, Hash, MessageSquare, CreditCard, TrendingUp, AlertCircle
 } from 'lucide-react';
-import { Project, Message, Document, Account, User as UserType, Analytics, ProjectMessageLogItem, GlobalMessageLogItem } from './types';
+import { Project, Message, Document, Account, User as UserType, Analytics, ProjectMessageLogItem, GlobalMessageLogItem, UsageLogItem, PaginatedResponse } from './types';
 import { generateGroundedAnswer } from './services/aiService';
 import { QRCodeCanvas } from 'qrcode.react';
 
@@ -1993,6 +1993,262 @@ const UsersView = ({ users, accounts, onRefresh, onImpersonate }: { users: UserT
   );
 };
 
+const BillingView = ({ effectiveUser, projects, accounts, analytics }: { effectiveUser: UserType | null, projects: Project[], accounts: Account[], analytics: Analytics | null }) => {
+  const [billingLogs, setBillingLogs] = useState<UsageLogItem[]>([]);
+  const [billingTotal, setBillingTotal] = useState(0);
+  const [billingPage, setBillingPage] = useState(1);
+  const [billingTotalPages, setBillingTotalPages] = useState(1);
+  const [billingFilters, setBillingFilters] = useState({
+    search: '',
+    type: '',
+    projectId: '',
+    accountId: '',
+    startDate: '',
+    endDate: ''
+  });
+
+  const fetchBilling = async () => {
+    try {
+      const params = new URLSearchParams({
+        page: billingPage.toString(),
+        limit: '20',
+        ...billingFilters
+      });
+      const res = await fetch(`${API_BASE}/api/billing?${params}`, {
+        headers: { 'x-user-id': effectiveUser?.id || '' }
+      });
+      const data = await res.json();
+      setBillingLogs(data.data);
+      setBillingTotal(data.total);
+      setBillingTotalPages(data.totalPages);
+    } catch (err) {
+      console.error("Failed to fetch billing logs:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (effectiveUser) fetchBilling();
+  }, [effectiveUser, billingPage, billingFilters]);
+
+  const handleExport = async (format: 'csv' | 'json') => {
+    const params = new URLSearchParams({
+      format,
+      ...billingFilters
+    });
+    window.open(`${API_BASE}/api/billing/export?${params}&x-user-id=${effectiveUser?.id || ''}`, '_blank');
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="flex justify-between items-end">
+        <div>
+          <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Billing & Usage</h2>
+          <p className="text-slate-500 mt-1">Monitor costs and resource consumption across the system.</p>
+        </div>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => handleExport('csv')}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm"
+          >
+            <Download className="w-4 h-4" />
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
+              <CreditCard className="w-6 h-6" />
+            </div>
+            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg uppercase tracking-wider">Total Spent</span>
+          </div>
+          <p className="text-3xl font-bold text-slate-900 tracking-tight">${analytics?.billing?.totalSpentUsd.toFixed(2) || '0.00'}</p>
+          <p className="text-xs text-slate-400 mt-1">Current billing cycle</p>
+        </div>
+
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
+              <Mic className="w-6 h-6" />
+            </div>
+            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg uppercase tracking-wider">Voice Spend</span>
+          </div>
+          <p className="text-3xl font-bold text-slate-900 tracking-tight">${analytics?.billing?.voiceSpentUsd.toFixed(2) || '0.00'}</p>
+          <p className="text-xs text-slate-400 mt-1">{analytics?.billing?.voiceSeconds.toLocaleString() || 0} seconds used</p>
+        </div>
+
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+              <FileText className="w-6 h-6" />
+            </div>
+            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg uppercase tracking-wider">Text Spend</span>
+          </div>
+          <p className="text-3xl font-bold text-slate-900 tracking-tight">${analytics?.billing?.textSpentUsd.toFixed(2) || '0.00'}</p>
+          <p className="text-xs text-slate-400 mt-1">{analytics?.billing?.textCharacters.toLocaleString() || 0} chars processed</p>
+        </div>
+
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
+              <TrendingUp className="w-6 h-6" />
+            </div>
+            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg uppercase tracking-wider">Budget Status</span>
+          </div>
+          <p className="text-3xl font-bold text-slate-900 tracking-tight">
+            {analytics?.billing?.monthlyLimitUsd ? 
+              `${((analytics.billing.totalSpentUsd / analytics.billing.monthlyLimitUsd) * 100).toFixed(1)}%` : 
+              'N/A'}
+          </p>
+          <p className="text-xs text-slate-400 mt-1">Of ${analytics?.billing?.monthlyLimitUsd?.toFixed(2) || '0.00'} limit</p>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Search content..."
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+              value={billingFilters.search}
+              onChange={(e) => setBillingFilters({...billingFilters, search: e.target.value})}
+            />
+          </div>
+          <select 
+            className="w-full px-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+            value={billingFilters.type}
+            onChange={(e) => setBillingFilters({...billingFilters, type: e.target.value})}
+          >
+            <option value="">All Types</option>
+            <option value="voice">Voice</option>
+            <option value="text">Text</option>
+          </select>
+          {effectiveUser?.role === 'admin' && (
+            <select 
+              className="w-full px-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+              value={billingFilters.accountId}
+              onChange={(e) => setBillingFilters({...billingFilters, accountId: e.target.value})}
+            >
+              <option value="">All Accounts</option>
+              {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          )}
+          <select 
+            className="w-full px-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+            value={billingFilters.projectId}
+            onChange={(e) => setBillingFilters({...billingFilters, projectId: e.target.value})}
+          >
+            <option value="">All Projects</option>
+            {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+          </select>
+          <input 
+            type="date" 
+            className="w-full px-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+            value={billingFilters.startDate}
+            onChange={(e) => setBillingFilters({...billingFilters, startDate: e.target.value})}
+          />
+          <input 
+            type="date" 
+            className="w-full px-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+            value={billingFilters.endDate}
+            onChange={(e) => setBillingFilters({...billingFilters, endDate: e.target.value})}
+          />
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50/50 border-b border-slate-100">
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Timestamp</th>
+                {effectiveUser?.role === 'admin' && <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</th>}
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Project</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Type</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Units</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cost</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Message Preview</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {billingLogs.map((log) => (
+                <tr key={log.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-slate-900">{new Date(log.created_at).toLocaleDateString()}</span>
+                      <span className="text-[10px] text-slate-400 font-medium">{new Date(log.created_at).toLocaleTimeString()}</span>
+                    </div>
+                  </td>
+                  {effectiveUser?.role === 'admin' && (
+                    <td className="px-6 py-4">
+                      <span className="text-sm font-medium text-slate-600">{log.account_name}</span>
+                    </td>
+                  )}
+                  <td className="px-6 py-4">
+                    <span className="text-sm font-medium text-slate-600">{log.project_title}</span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${
+                      log.type === 'voice' ? 'bg-blue-50 text-blue-600' : 'bg-indigo-50 text-indigo-600'
+                    }`}>
+                      {log.type === 'voice' ? <Mic className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
+                      {log.type}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="text-sm font-bold text-slate-900">
+                      {log.type === 'voice' ? `${log.units}s` : `${log.units} chars`}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="text-sm font-bold text-emerald-600">${log.cost_usd.toFixed(4)}</span>
+                  </td>
+                  <td className="px-6 py-4 max-w-xs">
+                    <p className="text-sm text-slate-500 truncate">{log.message_content}</p>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        <div className="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
+          <p className="text-xs text-slate-400 font-medium">
+            Showing <span className="text-slate-900 font-bold">{billingLogs.length}</span> of <span className="text-slate-900 font-bold">{billingTotal}</span> records
+          </p>
+          <div className="flex gap-2">
+            <button 
+              disabled={billingPage === 1}
+              onClick={() => setBillingPage(p => p - 1)}
+              className="p-2 bg-white border border-slate-200 rounded-xl disabled:opacity-50 hover:bg-slate-50 transition-all"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <div className="flex items-center px-4 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700">
+              Page {billingPage} of {billingTotalPages}
+            </div>
+            <button 
+              disabled={billingPage === billingTotalPages}
+              onClick={() => setBillingPage(p => p + 1)}
+              className="p-2 bg-white border border-slate-200 rounded-xl disabled:opacity-50 hover:bg-slate-50 transition-all"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MessagesView = ({ effectiveUser, projects, accounts }: { effectiveUser: UserType | null, projects: Project[], accounts: Account[] }) => {
   const [messages, setMessages] = useState<GlobalMessageLogItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2464,7 +2720,23 @@ const ProjectLogsView = ({ project, onBack }: { project: Project, onBack: () => 
   );
 };
 
-const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { onLaunchKiosk: (project: Project) => void, sessionTimeout: number, setSessionTimeout: (val: number) => void }) => {
+const AdminDashboard = ({ 
+  onLaunchKiosk, 
+  sessionTimeout, 
+  setSessionTimeout,
+  billingVoiceRate,
+  setBillingVoiceRate,
+  billingTextRate,
+  setBillingTextRate
+}: { 
+  onLaunchKiosk: (project: Project) => void, 
+  sessionTimeout: number, 
+  setSessionTimeout: (val: number) => void,
+  billingVoiceRate: number,
+  setBillingVoiceRate: (val: number) => void,
+  billingTextRate: number,
+  setBillingTextRate: (val: number) => void
+}) => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [users, setUsers] = useState<UserType[]>([]);
@@ -2480,7 +2752,13 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
   const [managingProject, setManagingProject] = useState<Project | null>(null);
   const [projectDocs, setProjectDocs] = useState<Document[]>([]);
   const [newProject, setNewProject] = useState({ title: '', description: '', instructions: '', account_id: 'acc_default' });
-  const [newAccount, setNewAccount] = useState({ name: '', branding_json: '{}' });
+  const [newAccount, setNewAccount] = useState({ 
+    name: '', 
+    branding_json: '{}',
+    monthly_limit_usd: 100,
+    warning_threshold_percent: 80,
+    hard_stop_enabled: true
+  });
   const [uploadingDoc, setUploadingDoc] = useState({ title: '', content: '' });
   const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -2504,17 +2782,18 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   const fetchData = async () => {
-    console.log("fetchData: Starting Promise.all for projects, users, analytics, accounts...");
+    console.log("fetchData: Starting Promise.all for projects, users, analytics, accounts, settings...");
     try {
       const headers = { 'x-user-id': effectiveUserId };
-      const [pRes, uRes, aRes, accRes] = await Promise.all([
+      const [pRes, uRes, aRes, accRes, sRes] = await Promise.all([
         fetch(`${API_BASE}/api/projects`, { headers }).then(r => r),
         fetch(`${API_BASE}/api/users`, { headers }).then(r => r),
         fetch(`${API_BASE}/api/analytics`, { headers }).then(r => r),
-        fetch(`${API_BASE}/api/accounts`, { headers }).then(r => r)
+        fetch(`${API_BASE}/api/accounts`, { headers }).then(r => r),
+        fetch(`${API_BASE}/api/settings`, { headers }).then(r => r)
       ]);
       
-      if (!pRes.ok || !uRes.ok || !aRes.ok || !accRes.ok) {
+      if (!pRes.ok || !uRes.ok || !aRes.ok || !accRes.ok || !sRes.ok) {
         setAnalytics(null);
         return;
       }
@@ -2523,11 +2802,17 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
       const users = await uRes.json();
       const analytics = await aRes.json();
       const accounts = await accRes.json();
+      const settings = await sRes.json();
       
       setProjects(projects);
       setUsers(users);
       setAnalytics(analytics);
       setAccounts(accounts);
+
+      // Extract settings
+      if (settings.session_timeout) setSessionTimeout(parseInt(settings.session_timeout));
+      if (settings.billing_voice_rate_per_minute) setBillingVoiceRate(parseFloat(settings.billing_voice_rate_per_minute));
+      if (settings.billing_text_rate_per_1000_chars) setBillingTextRate(parseFloat(settings.billing_text_rate_per_1000_chars));
 
       // Set initial current user if not set
       if (!currentUser && users.length > 0) {
@@ -2607,7 +2892,13 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
       
       if (!res.ok) throw new Error('Failed to save account');
       
-      setNewAccount({ name: '', branding_json: '{}' });
+      setNewAccount({ 
+        name: '', 
+        branding_json: '{}',
+        monthly_limit_usd: 100,
+        warning_threshold_percent: 80,
+        hard_stop_enabled: true
+      });
       setShowNewAccount(false);
       setEditingAccount(null);
       fetchData();
@@ -2629,7 +2920,13 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
 
   const handleEditAccount = (acc: Account) => {
     setEditingAccount(acc);
-    setNewAccount({ name: acc.name, branding_json: acc.branding_json || '{}' });
+    setNewAccount({ 
+      name: acc.name, 
+      branding_json: acc.branding_json || '{}',
+      monthly_limit_usd: acc.monthly_limit_usd || 100,
+      warning_threshold_percent: acc.warning_threshold_percent || 80,
+      hard_stop_enabled: acc.hard_stop_enabled ?? true
+    });
     setShowNewAccount(true);
   };
 
@@ -2709,16 +3006,28 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
   const handleSaveSettings = async () => {
     setIsSavingSettings(true);
     try {
-      await fetch(`${API_BASE}/api/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'session_timeout', value: sessionTimeout })
-      });
+      await Promise.all([
+        fetch(`${API_BASE}/api/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'session_timeout', value: sessionTimeout })
+        }),
+        fetch(`${API_BASE}/api/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'billing_voice_rate_per_minute', value: billingVoiceRate })
+        }),
+        fetch(`${API_BASE}/api/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'billing_text_rate_per_1000_chars', value: billingTextRate })
+        })
+      ]);
       // Optionally show a success toast or modal
       setConfirmModal({
         show: true,
         title: 'Settings Saved',
-        message: 'Your kiosk behavior settings have been successfully updated.',
+        message: 'Your system settings have been successfully updated.',
         onConfirm: () => setConfirmModal(null),
         confirmLabel: 'OK',
         confirmColor: 'bg-indigo-600 hover:bg-indigo-700'
@@ -2778,6 +3087,7 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
             { id: 'accounts', icon: Building2, label: 'Accounts', roles: ['admin'] },
             { id: 'projects', icon: BookOpen, label: 'Projects', roles: ['admin', 'user'] },
             { id: 'messages', icon: MessageSquare, label: 'Messages', roles: ['admin', 'user'] },
+            { id: 'billing', icon: CreditCard, label: 'Billing', roles: ['admin', 'user'] },
             { id: 'users', icon: UserIcon, label: 'Users', roles: ['admin'] },
             { id: 'settings', icon: Settings, label: 'Settings', roles: ['admin', 'user'] },
           ].filter(item => !item.roles || item.roles.includes(effectiveUser?.role || 'user')).map((item) => (
@@ -3034,6 +3344,14 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
                 effectiveUser={effectiveUser}
                 projects={projects}
                 accounts={accounts}
+              />
+            )}
+            {activeTab === 'billing' && (
+              <BillingView 
+                effectiveUser={effectiveUser}
+                projects={projects}
+                accounts={accounts}
+                analytics={analytics}
               />
             )}
             {activeTab === 'overview' && effectiveUser?.role === 'admin' && (
@@ -3343,6 +3661,36 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
                   </div>
                 </div>
 
+                {effectiveUser?.role === 'admin' && (
+                  <div className="bg-white p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm">
+                    <h4 className="font-bold mb-6 md:mb-8 text-sm md:text-base">Billing Rates</h4>
+                    <div className="space-y-4 md:space-y-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Voice Rate ($ / min)</label>
+                          <input 
+                            type="number" 
+                            step="0.01"
+                            value={billingVoiceRate}
+                            onChange={(e) => setBillingVoiceRate(parseFloat(e.target.value))}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 text-sm md:text-base" 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Text Rate ($ / 1k chars)</label>
+                          <input 
+                            type="number" 
+                            step="0.01"
+                            value={billingTextRate}
+                            onChange={(e) => setBillingTextRate(parseFloat(e.target.value))}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 text-sm md:text-base" 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-white p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm">
                   <h4 className="font-bold mb-6 md:mb-8 text-sm md:text-base">Kiosk Behavior</h4>
                   <div className="space-y-4 md:space-y-6">
@@ -3530,6 +3878,36 @@ const AdminDashboard = ({ onLaunchKiosk, sessionTimeout, setSessionTimeout }: { 
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 h-32 resize-none text-sm md:text-base font-mono" 
                   />
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Monthly Limit ($)</label>
+                    <input 
+                      type="number" 
+                      value={newAccount.monthly_limit_usd}
+                      onChange={e => setNewAccount({...newAccount, monthly_limit_usd: parseFloat(e.target.value)})}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 text-sm md:text-base" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Warning Threshold (%)</label>
+                    <input 
+                      type="number" 
+                      value={newAccount.warning_threshold_percent}
+                      onChange={e => setNewAccount({...newAccount, warning_threshold_percent: parseFloat(e.target.value)})}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 text-sm md:text-base" 
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl">
+                  <input 
+                    type="checkbox" 
+                    id="hardStop"
+                    checked={newAccount.hard_stop_enabled}
+                    onChange={e => setNewAccount({...newAccount, hard_stop_enabled: e.target.checked})}
+                    className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded"
+                  />
+                  <label htmlFor="hardStop" className="text-sm font-medium text-slate-700">Enable Hard Stop at Limit</label>
+                </div>
               </div>
               <div className="p-6 md:p-8 bg-slate-50 flex flex-col sm:flex-row justify-end gap-3">
                 <button 
@@ -3711,6 +4089,8 @@ export default function App() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessionTimeout, setSessionTimeout] = useState(180); // Default 3 minutes
+  const [billingVoiceRate, setBillingVoiceRate] = useState(0.10);
+  const [billingTextRate, setBillingTextRate] = useState(0.02);
 
   // Check for summary page
   const path = window.location.pathname;
@@ -3732,9 +4112,9 @@ export default function App() {
   useEffect(() => {
     fetch(`${API_BASE}/api/projects`).then(res => res.json()).then(setProjects);
     fetch(`${API_BASE}/api/settings`).then(res => res.json()).then(settings => {
-      if (settings.session_timeout) {
-        setSessionTimeout(parseInt(settings.session_timeout));
-      }
+      if (settings.session_timeout) setSessionTimeout(parseInt(settings.session_timeout));
+      if (settings.billing_voice_rate_per_minute) setBillingVoiceRate(parseFloat(settings.billing_voice_rate_per_minute));
+      if (settings.billing_text_rate_per_1000_chars) setBillingTextRate(parseFloat(settings.billing_text_rate_per_1000_chars));
     });
   }, []);
 
@@ -3797,6 +4177,10 @@ export default function App() {
       onLaunchKiosk={(p) => { setSelectedProject(p); setMode('kiosk'); }} 
       sessionTimeout={sessionTimeout}
       setSessionTimeout={setSessionTimeout}
+      billingVoiceRate={billingVoiceRate}
+      setBillingVoiceRate={setBillingVoiceRate}
+      billingTextRate={billingTextRate}
+      setBillingTextRate={setBillingTextRate}
     />
   );
   if (mode === 'kiosk' && selectedProject) return (

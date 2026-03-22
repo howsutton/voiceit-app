@@ -4,6 +4,9 @@ export interface Account {
   id: string;
   name: string;
   branding_json?: string;
+  monthly_limit_usd?: number;
+  warning_threshold_percent?: number;
+  hard_stop_enabled?: boolean;
 }
 
 export interface Project {
@@ -53,6 +56,21 @@ export interface GlobalMessageLogItem extends ProjectMessageLogItem {
   account_name: string;
 }
 
+export interface UsageLogItem {
+  id: string;
+  account_id: string;
+  account_name: string;
+  project_id: string;
+  project_title: string;
+  session_id: string;
+  message_id: string;
+  message_content: string;
+  type: 'voice' | 'text';
+  units: number;
+  cost_usd: number;
+  created_at: string;
+}
+
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;
@@ -84,10 +102,20 @@ export interface Analytics {
     neutral: number;
     negative: number;
   };
-  distribution: {
+  distribution?: {
     correct: number;
     clarifications: number;
     unknowns: number;
+  };
+  billing?: {
+    totalSpentUsd: number;
+    voiceSpentUsd: number;
+    textSpentUsd: number;
+    voiceSeconds: number;
+    textCharacters: number;
+    monthlyLimitUsd?: number;
+    warningThresholdPercent?: number;
+    hardStopEnabled?: boolean;
   };
 }
 
