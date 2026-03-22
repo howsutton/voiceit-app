@@ -418,7 +418,20 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const [isThinking, setIsThinking] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [selectedSource, setSelectedSource] = useState<any>(null);
+  const [activePreviewSources, setActivePreviewSources] = useState<any[]>([]);
+  const [activePreviewIndex, setActivePreviewIndex] = useState(0);
+  const selectedSource = activePreviewSources[activePreviewIndex] || null;
+  
+  const setSelectedSource = useCallback((source: any) => {
+    if (source === null) {
+      setActivePreviewSources([]);
+      setActivePreviewIndex(0);
+    } else {
+      setActivePreviewSources([source]);
+      setActivePreviewIndex(0);
+    }
+  }, []);
+
   const [showSummary, setShowSummary] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -462,48 +475,63 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   // --- Source Flow Lifecycle Helpers ---
 
   const clearSourceFlow = useCallback(() => {
-    setSelectedSource(null);
+    setActivePreviewSources([]);
+    setActivePreviewIndex(0);
     setIsShowingSourcePending(false);
     awaitingSourceConfirmationRef.current = false;
     sourceFlowStateRef.current = 'idle';
     lastReadPromptedSourceKeyRef.current = null;
   }, []);
 
-  const openSource = useCallback((source: any) => {
-    const newSource = {
-      id: 'source-' + Date.now(),
-      project_id: project.id,
-      title: source.documentTitle,
-      content: source.excerpt,
-      page_count: 1,
-      ...source
-    };
-
-    // Deduplicate: check if already showing this source
-    const isAlreadySelected = selectedSource && 
-      selectedSource.documentTitle === newSource.documentTitle && 
-      selectedSource.pageNumber === newSource.pageNumber;
-
-    if (!isAlreadySelected) {
-      setSelectedSource(newSource);
+  const openSource = useCallback((source: any, sourceSet?: any[]) => {
+    const sourcesToPreview = sourceSet && sourceSet.length > 0 ? sourceSet : [source];
+    
+    // Deduplicate and cap to 3 for voice mode
+    const finalSources: any[] = [];
+    const seen = new Set();
+    for (const s of sourcesToPreview) {
+      const key = `${s.documentTitle}-${s.pageNumber}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        finalSources.push({
+          id: 'source-' + Date.now() + '-' + finalSources.length,
+          project_id: project.id,
+          title: s.documentTitle,
+          content: s.excerpt,
+          page_count: 1,
+          ...s
+        });
+      }
+      if (finalSources.length >= 3) break;
     }
+
+    // Find index of the requested source in the set
+    const initialIndex = finalSources.findIndex(s => 
+      s.documentTitle === source.documentTitle && s.pageNumber === source.pageNumber
+    );
+    
+    setActivePreviewSources(finalSources);
+    const actualIndex = initialIndex >= 0 ? initialIndex : 0;
+    setActivePreviewIndex(actualIndex);
+
+    const currentSource = finalSources[actualIndex];
     
     // Ensure it's tracked in the current turn for the summary
-    if (!currentTurnRef.current.sources.some((s: any) => 
-      s.documentTitle === newSource.documentTitle && 
-      s.pageNumber === newSource.pageNumber
-    )) {
-      currentTurnRef.current.sources.push(newSource);
-    }
+    finalSources.forEach(s => {
+      if (!currentTurnRef.current.sources.some((existing: any) => 
+        existing.documentTitle === s.documentTitle && 
+        existing.pageNumber === s.pageNumber
+      )) {
+        currentTurnRef.current.sources.push(s);
+      }
+    });
     
     setIsShowingSourcePending(false);
     awaitingSourceConfirmationRef.current = false;
     
-    // Transition to awaiting read confirmation
-    // Only if we haven't already asked for this specific source in this session
-    const sourceKey = `${newSource.documentTitle}-${newSource.pageNumber}`;
+    // Transition to awaiting read confirmation for the CURRENTLY SHOWN source
+    const sourceKey = `${currentSource.documentTitle}-${currentSource.pageNumber}`;
     
-    // Check both answered and prompted guards
     const alreadyPrompted = lastReadPromptedSourceKeyRef.current === sourceKey;
     const alreadyAnswered = lastReadConfirmationSourceKeyRef.current === sourceKey;
 
@@ -513,7 +541,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     } else {
       sourceFlowStateRef.current = 'source_visible';
     }
-  }, [project.id, selectedSource]);
+  }, [project.id]);
 
   const enterSummaryMode = useCallback(() => {
     clearSourceFlow();
@@ -1145,7 +1173,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       excerpt: args.excerpt
                     };
                     
-                    openSource(newSource);
+                    openSource(newSource, currentTurnRef.current.sources);
                     
                     // Ensure it's in currentTurnRef sources if not already
                     if (!currentTurnRef.current.sources.some(s => s.documentTitle === newSource.documentTitle && s.pageNumber === newSource.pageNumber)) {
@@ -1325,7 +1353,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                     console.log("Affirmative source confirmation detected:", normalized);
                     const sourceToShow = lastOfferedSourcesRef.current[0];
                     setIsShowingSourcePending(true);
-                    openSource(sourceToShow);
+                    openSource(sourceToShow, lastOfferedSourcesRef.current);
                     
                     // Also ensure it's in the messages if not already there
                     setMessages(prev => {
@@ -1351,7 +1379,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 // 2. Awaiting READ confirmation
                 if (selectedSource && sourceFlowStateRef.current === 'awaiting_read_confirmation') {
                   const affirmativePatterns = ['yes', 'yeah', 'yep', 'sure', 'okay', 'ok', 'read it', 'please do', 'yes please', 'please read'];
-                  const negativePatterns = ['no', 'no thanks', 'dont read', 'skip', 'not now', 'no dont', 'stop'];
+                  const negativePatterns = ['no', 'no thanks', 'dont read', 'skip', 'not now', 'no dont', 'stop', 'close', 'close source', 'hide source', 'not interested'];
 
                   if (affirmativePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
                     console.log("Affirmative read confirmation detected:", normalized);
@@ -1360,8 +1388,16 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                     // Let the model handle the reading via prompt instruction
                   } else if (negativePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
                     console.log("Negative read confirmation detected:", normalized);
-                    sourceFlowStateRef.current = 'awaiting_post_source_action';
-                    lastReadConfirmationSourceKeyRef.current = `${selectedSource.documentTitle}-${selectedSource.pageNumber}`;
+                    
+                    const isCloseIntent = ['close', 'close source', 'hide source', 'not interested'].some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p));
+                    
+                    if (isCloseIntent) {
+                      clearSourceFlow();
+                      sourceFlowStateRef.current = 'awaiting_post_source_action';
+                    } else {
+                      sourceFlowStateRef.current = 'awaiting_post_source_action';
+                      lastReadConfirmationSourceKeyRef.current = `${selectedSource.documentTitle}-${selectedSource.pageNumber}`;
+                    }
                     
                     // Send a small signal to the model so it doesn't wait or treat "no" as session end
                     sessionPromise.then(s => {
@@ -1370,6 +1406,34 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       }
                     });
                     return; // Consume this transcript to prevent it being treated as session end
+                  }
+                }
+
+                // --- Multi-Source Navigation & Closing ---
+                if (selectedSource) {
+                  const nextPatterns = ['next', 'next source', 'show next', 'go next'];
+                  const prevPatterns = ['previous', 'previous source', 'go back', 'show previous'];
+                  const closePatterns = ['close', 'close source', 'hide source', 'stop showing', 'not interested', 'no thanks'];
+                  const closeAllPatterns = ['close all', 'hide all'];
+
+                  if (nextPatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
+                    if (activePreviewIndex < activePreviewSources.length - 1) {
+                      setActivePreviewIndex(prev => prev + 1);
+                      return;
+                    }
+                  } else if (prevPatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
+                    if (activePreviewIndex > 0) {
+                      setActivePreviewIndex(prev => prev - 1);
+                      return;
+                    }
+                  } else if (closeAllPatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
+                    clearSourceFlow();
+                    sourceFlowStateRef.current = 'awaiting_post_source_action';
+                    return;
+                  } else if (closePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
+                    clearSourceFlow();
+                    sourceFlowStateRef.current = 'awaiting_post_source_action';
+                    return;
                   }
                 }
 
@@ -1843,13 +1907,38 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 <div className="p-4 md:p-6 border-b border-white/10 flex justify-between items-center">
                   <div className="flex items-center gap-3">
                     <FileText className="w-5 h-5 text-blue-400" />
-                    <h3 className="font-medium truncate max-w-[200px] md:max-w-md">{selectedSource.documentTitle}</h3>
+                    <div className="flex flex-col">
+                      <h3 className="font-medium truncate max-w-[200px] md:max-w-md leading-tight">{selectedSource.documentTitle}</h3>
+                      {activePreviewSources.length > 1 && (
+                        <span className="text-[10px] text-white/40 uppercase tracking-widest mt-0.5">
+                          Source {activePreviewIndex + 1} of {activePreviewSources.length}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <button onClick={() => setSelectedSource(null)} className="p-2 text-white/40 hover:text-white transition-colors">
+                  <button onClick={() => clearSourceFlow()} className="p-2 text-white/40 hover:text-white transition-colors">
                     Close
                   </button>
                 </div>
-                <div className="flex-1 p-4 md:p-8 overflow-y-auto">
+                <div className="flex-1 p-4 md:p-8 overflow-y-auto relative group">
+                  {activePreviewSources.length > 1 && (
+                    <>
+                      <button 
+                        onClick={() => setActivePreviewIndex(prev => Math.max(0, prev - 1))}
+                        disabled={activePreviewIndex === 0}
+                        className={`absolute left-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-white/5 border border-white/10 transition-all ${activePreviewIndex === 0 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:scale-110 active:scale-95'}`}
+                      >
+                        <ChevronLeft className="w-6 h-6" />
+                      </button>
+                      <button 
+                        onClick={() => setActivePreviewIndex(prev => Math.min(activePreviewSources.length - 1, prev + 1))}
+                        disabled={activePreviewIndex === activePreviewSources.length - 1}
+                        className={`absolute right-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-white/5 border border-white/10 transition-all ${activePreviewIndex === activePreviewSources.length - 1 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:scale-110 active:scale-95'}`}
+                      >
+                        <ChevronRight className="w-6 h-6" />
+                      </button>
+                    </>
+                  )}
                   <div className="aspect-[3/4] bg-white/5 rounded-xl border border-white/10 p-6 md:p-12 relative overflow-hidden">
                     <div className="absolute top-4 right-4 text-[8px] md:text-[10px] uppercase tracking-widest text-white/20">Page {selectedSource.pageNumber}</div>
                     <div className="space-y-4">
@@ -1864,9 +1953,27 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                     </div>
                   </div>
                 </div>
-                <div className="p-4 md:p-6 border-t border-white/10 flex justify-center">
+                <div className="p-4 md:p-6 border-t border-white/10 flex justify-center gap-4">
+                  {activePreviewSources.length > 1 && (
+                    <div className="flex gap-2 mr-auto">
+                      <button 
+                        onClick={() => setActivePreviewIndex(prev => Math.max(0, prev - 1))}
+                        disabled={activePreviewIndex === 0}
+                        className={`px-4 py-2 rounded-full border border-white/10 text-xs font-medium transition-all ${activePreviewIndex === 0 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/5'}`}
+                      >
+                        Previous
+                      </button>
+                      <button 
+                        onClick={() => setActivePreviewIndex(prev => Math.min(activePreviewSources.length - 1, prev + 1))}
+                        disabled={activePreviewIndex === activePreviewSources.length - 1}
+                        className={`px-4 py-2 rounded-full border border-white/10 text-xs font-medium transition-all ${activePreviewIndex === activePreviewSources.length - 1 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/5'}`}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
                   <button 
-                    onClick={() => setSelectedSource(null)}
+                    onClick={() => clearSourceFlow()}
                     className="px-8 py-3 bg-blue-600 hover:bg-blue-500 rounded-full text-sm font-medium transition-all"
                   >
                     Got it
@@ -1978,10 +2085,38 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
               className="fixed inset-0 md:relative md:inset-auto md:w-1/2 border-l border-white/10 bg-[#0a0a0a] flex flex-col z-30"
             >
               <div className="p-4 md:p-6 border-b border-white/10 flex justify-between items-center">
-                <div className="flex items-center gap-3"><FileText className="w-5 h-5 text-blue-400" /><h3 className="font-medium truncate max-w-[150px] md:max-w-[200px]">{selectedSource.documentTitle}</h3></div>
-                <button onClick={() => setSelectedSource(null)} className="p-2 text-white/40 hover:text-white">Close</button>
+                <div className="flex items-center gap-3">
+                  <FileText className="w-5 h-5 text-blue-400" />
+                  <div className="flex flex-col">
+                    <h3 className="font-medium truncate max-w-[150px] md:max-w-[200px] leading-tight">{selectedSource.documentTitle}</h3>
+                    {activePreviewSources.length > 1 && (
+                      <span className="text-[10px] text-white/40 uppercase tracking-widest mt-0.5">
+                        Source {activePreviewIndex + 1} of {activePreviewSources.length}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button onClick={() => clearSourceFlow()} className="p-2 text-white/40 hover:text-white">Close</button>
               </div>
-              <div className="flex-1 p-4 md:p-8 overflow-y-auto">
+              <div className="flex-1 p-4 md:p-8 overflow-y-auto relative group">
+                {activePreviewSources.length > 1 && (
+                  <>
+                    <button 
+                      onClick={() => setActivePreviewIndex(prev => Math.max(0, prev - 1))}
+                      disabled={activePreviewIndex === 0}
+                      className={`absolute left-4 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-white/5 border border-white/10 transition-all ${activePreviewIndex === 0 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:scale-110 active:scale-95'}`}
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <button 
+                      onClick={() => setActivePreviewIndex(prev => Math.min(activePreviewSources.length - 1, prev + 1))}
+                      disabled={activePreviewIndex === activePreviewSources.length - 1}
+                      className={`absolute right-4 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-white/5 border border-white/10 transition-all ${activePreviewIndex === activePreviewSources.length - 1 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:scale-110 active:scale-95'}`}
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </>
+                )}
                 <div className="aspect-[3/4] bg-white/5 rounded-xl border border-white/10 p-6 md:p-12 relative overflow-hidden">
                   <div className="absolute top-4 right-4 text-[8px] md:text-[10px] uppercase tracking-widest text-white/20">Page {selectedSource.pageNumber}</div>
                   <div className="space-y-4">
@@ -1991,6 +2126,24 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                   </div>
                 </div>
               </div>
+              {activePreviewSources.length > 1 && (
+                <div className="p-4 border-t border-white/10 flex justify-center gap-4">
+                  <button 
+                    onClick={() => setActivePreviewIndex(prev => Math.max(0, prev - 1))}
+                    disabled={activePreviewIndex === 0}
+                    className={`flex-1 py-2 rounded-full border border-white/10 text-xs font-medium transition-all ${activePreviewIndex === 0 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/5'}`}
+                  >
+                    Previous
+                  </button>
+                  <button 
+                    onClick={() => setActivePreviewIndex(prev => Math.min(activePreviewSources.length - 1, prev + 1))}
+                    disabled={activePreviewIndex === activePreviewSources.length - 1}
+                    className={`flex-1 py-2 rounded-full border border-white/10 text-xs font-medium transition-all ${activePreviewIndex === activePreviewSources.length - 1 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/5'}`}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
