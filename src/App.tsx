@@ -448,6 +448,33 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const nextStartTime = useRef(0);
   const isPlaying = useRef(false);
   const lastActivityRef = useRef<number>(Date.now());
+  const [billingStatus, setBillingStatus] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchBilling = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/account-billing-status`, {
+          headers: { 'x-user-id': 'kiosk' }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setBillingStatus(data);
+        }
+      } catch (e) {
+        console.warn("Failed to fetch billing status.");
+      }
+    };
+    fetchBilling();
+    const interval = setInterval(fetchBilling, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const billingAccessState = useMemo(() => {
+    if (!billingStatus) return 'ok';
+    if (billingStatus.isBlocked) return 'blocked';
+    if (billingStatus.status === 'warning') return 'warning';
+    return 'ok';
+  }, [billingStatus]);
   const hasPromptedRef = useRef<boolean>(false);
   const lastSeenTimeRef = useRef<number | null>(null);
   const currentTurnRef = useRef<{ userText: string, modelText: string, sources: any[] }>({ userText: '', modelText: '', sources: [] });
@@ -868,6 +895,10 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   };
 
   const connectLive = async (currentDocs?: Document[], isReturn: boolean = false) => {
+    if (billingAccessState === 'blocked') {
+      console.warn("AI usage blocked due to billing limit.");
+      return;
+    }
     if ((isConnectingRef.current && !isReconnectingRef.current) || connectionStatusRef.current === 'connected') {
       console.log("Already connecting or connected to Gemini Live, skipping.");
       return;
@@ -1672,6 +1703,10 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
 
   const handleSend = async (text: string) => {
     if (!text.trim() || !session) return;
+    if (billingAccessState === 'blocked') {
+      setError("AI features are currently suspended for this account.");
+      return;
+    }
     
     lastActivityRef.current = Date.now();
     hasPromptedRef.current = false;
@@ -1833,6 +1868,29 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
           <button onClick={() => { setIsVoiceMode(false); setIsListening(false); setIsSpeaking(false); setIsThinking(false); }} className="px-4 md:px-6 py-2 md:py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] md:text-sm font-medium transition-all">Text Mode</button>
         </div>
         <div className="z-10 flex flex-col items-center gap-8 md:gap-12 w-full max-w-2xl">
+          {billingAccessState !== 'ok' && (
+            <motion.div 
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`w-full p-4 rounded-2xl border flex items-center gap-3 backdrop-blur-xl ${
+                billingAccessState === 'blocked' 
+                  ? 'bg-red-500/10 border-red-500/20 text-red-400' 
+                  : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+              }`}
+            >
+              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+              <div className="text-xs md:text-sm">
+                <p className="font-bold">
+                  {billingAccessState === 'blocked' ? 'AI Features Suspended' : 'Billing Notice'}
+                </p>
+                <p className="opacity-80">
+                  {billingAccessState === 'blocked' 
+                    ? 'AI access is temporarily disabled for this account. Please contact an administrator.' 
+                    : 'This account is approaching its usage limit. Please review billing settings.'}
+                </p>
+              </div>
+            </motion.div>
+          )}
           <div className="relative">
             <VoiceOrb 
               isSpeaking={isSpeaking} 
@@ -2038,6 +2096,25 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       </header>
       <main className="flex-1 flex overflow-hidden relative">
         <div className={`flex-1 flex flex-col transition-all duration-500 ${selectedSource ? 'hidden md:flex md:w-1/2' : 'w-full'}`}>
+          {billingAccessState !== 'ok' && (
+            <div className={`p-3 md:p-4 border-b flex items-center gap-3 ${
+              billingAccessState === 'blocked' 
+                ? 'bg-red-500/10 border-red-500/20 text-red-400' 
+                : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+            }`}>
+              <AlertTriangle className="w-4 h-4 md:w-5 md:h-5 flex-shrink-0" />
+              <div className="text-[10px] md:text-xs">
+                <p className="font-bold">
+                  {billingAccessState === 'blocked' ? 'AI Features Suspended' : 'Billing Notice'}
+                </p>
+                <p className="opacity-80">
+                  {billingAccessState === 'blocked' 
+                    ? 'AI access is temporarily disabled for this account. Please contact an administrator.' 
+                    : 'This account is approaching its usage limit. Please review billing settings.'}
+                </p>
+              </div>
+            </div>
+          )}
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 md:space-y-8 scroll-smooth">
             <AnimatePresence mode="popLayout">
               {messages.map((msg) => (
@@ -2067,10 +2144,34 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
           </div>
           <div className="p-4 md:p-6 bg-black/40 backdrop-blur-xl border-t border-white/10">
             <div className="max-w-3xl mx-auto flex items-center gap-3 md:gap-4">
-              <button onClick={() => setIsListening(!isListening)} className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${isListening ? 'bg-red-500 animate-pulse' : 'bg-white/10 hover:bg-white/20'}`}><Mic className="w-5 h-5 md:w-6 md:h-6" /></button>
+              <button 
+                onClick={() => billingAccessState !== 'blocked' && setIsListening(!isListening)} 
+                disabled={billingAccessState === 'blocked'}
+                className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
+                  billingAccessState === 'blocked' 
+                    ? 'bg-white/5 cursor-not-allowed opacity-50' 
+                    : isListening ? 'bg-red-500 animate-pulse' : 'bg-white/10 hover:bg-white/20'
+                }`}
+              >
+                <Mic className="w-5 h-5 md:w-6 md:h-6" />
+              </button>
               <div className="flex-1 relative">
-                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend(input)} placeholder={isListening ? "Listening..." : "Ask..."} className="w-full bg-white/5 border border-white/10 rounded-full py-3 md:py-4 px-5 md:px-6 focus:outline-none focus:border-blue-500/50 transition-colors text-base md:text-lg font-light" />
-                <button onClick={() => handleSend(input)} className="absolute right-1.5 top-1.5 w-9 h-9 md:w-10 md:h-10 bg-blue-600 rounded-full flex items-center justify-center hover:bg-blue-500 transition-colors"><Send className="w-4 h-4 md:w-5 md:h-5" /></button>
+                <input 
+                  type="text" 
+                  value={input} 
+                  onChange={(e) => setInput(e.target.value)} 
+                  onKeyDown={(e) => e.key === 'Enter' && handleSend(input)} 
+                  placeholder={billingAccessState === 'blocked' ? "Account suspended - contact support" : isListening ? "Listening..." : "Ask..."} 
+                  disabled={billingAccessState === 'blocked'}
+                  className="w-full bg-white/5 border border-white/10 rounded-full py-3 md:py-4 px-5 md:px-6 focus:outline-none focus:border-blue-500/50 transition-colors text-base md:text-lg font-light disabled:opacity-50 disabled:cursor-not-allowed" 
+                />
+                <button 
+                  onClick={() => handleSend(input)} 
+                  disabled={billingAccessState === 'blocked'}
+                  className={`absolute right-1.5 top-1.5 w-9 h-9 md:w-10 md:h-10 bg-blue-600 rounded-full flex items-center justify-center hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <Send className="w-4 h-4 md:w-5 md:h-5" />
+                </button>
               </div>
             </div>
           </div>
@@ -3373,6 +3474,7 @@ const AdminDashboard = ({
   const [showNewProject, setShowNewProject] = useState(false);
   const [showNewAccount, setShowNewAccount] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [managingProject, setManagingProject] = useState<Project | null>(null);
@@ -3404,6 +3506,36 @@ const AdminDashboard = ({
   const [impersonatedUser, setImpersonatedUser] = useState<UserType | null>(null);
   const effectiveUser = impersonatedUser || currentUser;
   const effectiveUserId = effectiveUser?.id || '';
+
+  const [billingStatus, setBillingStatus] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchBilling = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/account-billing-status`, {
+          headers: { 'x-user-id': effectiveUser?.id || '' }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setBillingStatus(data);
+        }
+      } catch (e) {
+        console.warn("Failed to fetch billing status.");
+      }
+    };
+    if (effectiveUser) {
+      fetchBilling();
+      const interval = setInterval(fetchBilling, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [effectiveUser]);
+
+  const billingAccessState = useMemo(() => {
+    if (!billingStatus) return 'ok';
+    if (billingStatus.isBlocked) return 'blocked';
+    if (billingStatus.status === 'warning') return 'warning';
+    return 'ok';
+  }, [billingStatus]);
 
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
@@ -3787,6 +3919,25 @@ const AdminDashboard = ({
 
       {/* Main */}
       <main className="flex-1 p-4 md:p-10 overflow-y-auto">
+        {billingAccessState !== 'ok' && (
+          <div className={`mb-6 p-4 rounded-2xl border flex items-center gap-3 ${
+            billingAccessState === 'blocked' 
+              ? 'bg-red-50 border-red-200 text-red-700' 
+              : 'bg-amber-50 border-amber-200 text-amber-700'
+          }`}>
+            <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+            <div className="text-sm">
+              <p className="font-bold">
+                {billingAccessState === 'blocked' ? 'Account Suspended' : 'Billing Warning'}
+              </p>
+              <p className="opacity-90">
+                {billingAccessState === 'blocked' 
+                  ? 'This account has reached its monthly limit and AI features are disabled.' 
+                  : 'This account is approaching its monthly limit. Please review usage.'}
+              </p>
+            </div>
+          </div>
+        )}
         <header className={`flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-8 md:mb-10 ${impersonatedUser ? 'mt-12' : ''}`}>
           <div>
             <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 capitalize">

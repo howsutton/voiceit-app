@@ -10,6 +10,7 @@ export interface Account {
   totalSpentUsd?: number;
   balance?: number;
   status?: string;
+  isBlocked?: boolean;
 }
 
 export interface Project {

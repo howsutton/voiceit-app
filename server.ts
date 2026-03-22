@@ -190,6 +190,41 @@ async function startServer() {
     next();
   });
 
+  function getAccountBillingAccess(accountId: string) {
+    const acc = db.prepare(`
+      SELECT a.*, 
+             COALESCE((SELECT SUM(cost_usd) FROM usage_logs WHERE account_id = a.id), 0) as totalSpentUsd
+      FROM accounts a WHERE id = ?
+    `).get(accountId) as any;
+
+    if (!acc) return null;
+
+    const totalSpent = acc.totalSpentUsd || 0;
+    const limit = acc.monthly_limit_usd ?? 100.0;
+    const warningThresholdPct = acc.warning_threshold_percent ?? 80;
+    const warningThreshold = warningThresholdPct / 100;
+    const hardStopEnabled = acc.hard_stop_enabled === 1;
+    
+    let status = 'active';
+    if (totalSpent >= limit) status = 'capped';
+    else if (totalSpent >= limit * warningThreshold) status = 'warning';
+
+    const balance = limit - totalSpent;
+    const isBlocked = hardStopEnabled && balance <= 0;
+
+    return {
+      id: acc.id,
+      name: acc.name,
+      monthly_limit_usd: limit,
+      totalSpentUsd: totalSpent,
+      balance,
+      status,
+      warning_threshold_pct: warningThresholdPct,
+      hard_stop_enabled: hardStopEnabled,
+      isBlocked
+    };
+  }
+
   // Middleware to check database connection
   const checkDb = (req: any, res: any, next: any) => {
     if (!db) {
@@ -511,8 +546,8 @@ async function startServer() {
 
       const enrichedAccounts = accounts.map((acc: any) => {
         const totalSpent = acc.totalSpentUsd || 0;
-        const limit = acc.monthly_limit_usd || 100.0;
-        const warningThreshold = (acc.warning_threshold_percent || 80) / 100;
+        const limit = acc.monthly_limit_usd ?? 100.0;
+        const warningThreshold = (acc.warning_threshold_percent ?? 80) / 100;
         
         let status = 'active';
         if (totalSpent >= limit) status = 'capped';
@@ -536,7 +571,7 @@ async function startServer() {
       const { name, branding_json, monthly_limit_usd, warning_threshold_percent, hard_stop_enabled } = req.body;
       const id = 'acc_' + Math.random().toString(36).substring(7);
       db.prepare("INSERT INTO accounts (id, name, branding_json, monthly_limit_usd, warning_threshold_percent, hard_stop_enabled) VALUES (?, ?, ?, ?, ?, ?)")
-        .run(id, name, branding_json || '{}', monthly_limit_usd || 100.0, warning_threshold_percent || 80, hard_stop_enabled ? 1 : 0);
+        .run(id, name, branding_json || '{}', monthly_limit_usd ?? 100.0, warning_threshold_percent ?? 80, hard_stop_enabled ? 1 : 0);
       res.json({ id, name });
     } catch (err) {
       res.status(500).json({ error: "Failed to create account" });
@@ -551,6 +586,18 @@ async function startServer() {
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Failed to update account" });
+    }
+  });
+
+  app.get("/api/account-billing-status", checkDb, (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string;
+      const user = userId ? db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any : null;
+      if (!user) return res.status(401).json({ error: "Unauthorized" });
+      const billing = getAccountBillingAccess(user.account_id);
+      res.json(billing);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch billing status" });
     }
   });
 
@@ -737,8 +784,8 @@ async function startServer() {
           textSpentUsd: billing.textSpentUsd || 0,
           voiceSeconds: billing.voiceSeconds || 0,
           textCharacters: billing.textCharacters || 0,
-          monthlyLimitUsd: account?.monthly_limit_usd || 100.0,
-          warningThresholdPercent: account?.warning_threshold_percent || 80,
+          monthlyLimitUsd: account?.monthly_limit_usd ?? 100.0,
+          warningThresholdPercent: account?.warning_threshold_percent ?? 80,
           hardStopEnabled: !!account?.hard_stop_enabled
         }
       });
@@ -781,17 +828,14 @@ async function startServer() {
         WHERE s.id = ?
       `).get(req.params.id) as any;
 
-      if (session && role === 'model') {
-        const account = db.prepare("SELECT * FROM accounts WHERE id = ?").get(session.account_id) as any;
-        if (account && account.hard_stop_enabled) {
-          const usage = db.prepare("SELECT SUM(cost_usd) as total FROM usage_logs WHERE account_id = ?").get(session.account_id) as any;
-          const totalSpent = usage.total || 0;
-          if (totalSpent >= account.monthly_limit_usd) {
-            return res.status(402).json({ 
-              error: "Billing limit reached", 
-              message: "Your account has reached its monthly usage limit. Please contact your administrator to continue using VoiceIt AI services. We're here to help!" 
-            });
-          }
+      if (session) {
+        const billing = getAccountBillingAccess(session.account_id);
+        if (billing && billing.isBlocked) {
+          return res.status(402).json({ 
+            code: 'ACCOUNT_SUSPENDED',
+            error: "Billing limit reached", 
+            message: "Account usage limit reached" 
+          });
         }
       }
 
