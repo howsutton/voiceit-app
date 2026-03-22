@@ -498,6 +498,12 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const sourceFlowStateRef = useRef<'idle' | 'awaiting_show_confirmation' | 'source_visible' | 'awaiting_read_confirmation' | 'reading_source' | 'awaiting_post_source_action'>('idle');
   const lastReadConfirmationSourceKeyRef = useRef<string | null>(null);
   const lastReadPromptedSourceKeyRef = useRef<string | null>(null);
+  
+  // Billing: Voice duration tracking
+  const userVoiceStartTimeRef = useRef<number>(0);
+  const userVoiceDurationRef = useRef<number>(0);
+  const modelVoiceDurationRef = useRef<number>(0);
+  const isModelSpeakingRef = useRef<boolean>(false);
 
   // --- Source Flow Lifecycle Helpers ---
 
@@ -1082,6 +1088,12 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
             // Reset current turn tracking
             currentTurnRef.current = { userText: '', modelText: '', sources: [] };
             
+            // Reset billing duration tracking
+            userVoiceStartTimeRef.current = 0;
+            userVoiceDurationRef.current = 0;
+            modelVoiceDurationRef.current = 0;
+            isModelSpeakingRef.current = false;
+            
             // Trigger proactive greeting via text signal
             const signal = isReturn ? 'RETURN_PRESENCE' : 'NEW_PRESENCE';
             const promptText = isReturn 
@@ -1183,6 +1195,13 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
               console.log("Received message from Gemini:", message);
               
               if (message.serverContent?.modelTurn?.parts) {
+                // If model starts speaking, user has finished their turn
+                if (userVoiceStartTimeRef.current > 0) {
+                  userVoiceDurationRef.current = (Date.now() - userVoiceStartTimeRef.current) / 1000;
+                  userVoiceStartTimeRef.current = 0;
+                  console.log(`[BILLING] User voice duration: ${userVoiceDurationRef.current.toFixed(2)}s`);
+                }
+                isModelSpeakingRef.current = true;
                 for (const part of message.serverContent.modelTurn.parts) {
                   if (part.inlineData) {
                     playAudioChunk(part.inlineData.data);
@@ -1309,27 +1328,33 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                     try {
                       // Save user message
                       if (finalUserTextToSave) {
+                        const userDuration = userVoiceDurationRef.current;
                         await fetch(`${API_BASE}/api/sessions/${currentSession}/messages`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ 
                             role: 'user', 
-                            content: finalUserTextToSave 
+                            content: finalUserTextToSave,
+                            voice_seconds: userDuration > 0 ? userDuration : undefined
                           })
                         });
+                        userVoiceDurationRef.current = 0;
                       }
                       
                       // Save model message with sources
                       if (currentTurnRef.current.modelText) {
+                        const modelDuration = modelVoiceDurationRef.current;
                         await fetch(`${API_BASE}/api/sessions/${currentSession}/messages`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ 
                             role: 'model', 
                             content: currentTurnRef.current.modelText,
-                            sources: currentTurnRef.current.sources
+                            sources: currentTurnRef.current.sources,
+                            voice_seconds: modelDuration > 0 ? modelDuration : undefined
                           })
                         });
+                        modelVoiceDurationRef.current = 0;
                       }
                       
                       // Reset for next turn
@@ -1356,6 +1381,11 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
 
               // User transcription
               if (message.serverContent?.inputTranscription?.text) {
+                // Track start of user voice turn
+                if (userVoiceStartTimeRef.current === 0) {
+                  userVoiceStartTimeRef.current = Date.now();
+                }
+                
                 const text = message.serverContent.inputTranscription.text;
                 setTranscription(text);
                 
@@ -1554,6 +1584,12 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
             intentionalCloseRef.current = false;
             liveSessionRef.current = null;
             isReconnectingRef.current = false;
+            
+            // Reset billing refs
+            userVoiceStartTimeRef.current = 0;
+            userVoiceDurationRef.current = 0;
+            modelVoiceDurationRef.current = 0;
+            isModelSpeakingRef.current = false;
           },
           onerror: (err) => {
             console.error("Live session error:", err);
@@ -1609,6 +1645,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       source.start(nextStartTime.current);
       activeSourcesRef.current.push(source);
       nextStartTime.current += buffer.duration;
+      modelVoiceDurationRef.current += buffer.duration;
       
       // Keep track of the source so we can stop it on interruption
       // We store it in a way that we can stop multiple if they are queued
@@ -1640,12 +1677,20 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     // Note: nextStartTime.current = 0 will be handled in playAudioChunk
     nextStartTime.current = 0;
     setIsSpeaking(false);
+    isModelSpeakingRef.current = false;
   };
 
   const handleExit = () => {
     console.log("Exiting Kiosk Mode...");
     setShowSummary(false);
     stopAudioPlayback();
+    
+    // Reset billing refs
+    userVoiceStartTimeRef.current = 0;
+    userVoiceDurationRef.current = 0;
+    modelVoiceDurationRef.current = 0;
+    isModelSpeakingRef.current = false;
+
     if (liveSessionRef.current) {
       intentionalCloseRef.current = true;
       liveSessionRef.current.close();
@@ -1664,6 +1709,13 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     console.log("Full UI Reset triggered.");
     setShowSummary(false);
     stopAudioPlayback();
+    
+    // Reset billing refs
+    userVoiceStartTimeRef.current = 0;
+    userVoiceDurationRef.current = 0;
+    modelVoiceDurationRef.current = 0;
+    isModelSpeakingRef.current = false;
+
     if (liveSessionRef.current) {
       intentionalCloseRef.current = true;
       try { liveSessionRef.current.close(); } catch (e) {}

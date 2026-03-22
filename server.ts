@@ -871,15 +871,13 @@ async function startServer() {
         let units = content.length;
         let cost = (units / 1000) * textRate;
 
-        if (voice_seconds) {
+        if (voice_seconds && voice_seconds > 0) {
           type = 'voice';
           units = voice_seconds;
           cost = (units / 60) * voiceRate;
-        } else if (session.mode === 'voice' && role === 'model') {
-          // Model responses in voice mode are voice by default
-          type = 'voice';
-          units = 5; // 5s fallback for model voice
-          cost = (units / 60) * voiceRate;
+          console.log(`[BILLING] Voice turn: role=${role}, seconds=${units.toFixed(2)}, cost=${cost.toFixed(4)}`);
+        } else {
+          console.log(`[BILLING] Text turn: role=${role}, chars=${units}, cost=${cost.toFixed(4)}`);
         }
 
         const usageId = 'usage_' + Math.random().toString(36).substring(7);
