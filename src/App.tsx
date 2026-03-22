@@ -1779,11 +1779,18 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       
       try {
         // Save user message to backend
-        fetch(`${API_BASE}/api/sessions/${session}/messages`, {
+        const saveRes = await fetch(`${API_BASE}/api/sessions/${session}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ role: 'user', content: text })
-        }).catch(e => console.warn("Failed to save user message:", e));
+        });
+
+        if (saveRes.status === 402) {
+          const errorData = await saveRes.json();
+          setError(errorData.message || "AI features are currently suspended for this account.");
+          setBillingStatus({ isBlocked: true, status: 'blocked' });
+          return;
+        }
 
         const history = messages.map(m => ({ role: m.role, content: m.content }));
         const result = await generateGroundedAnswer(text, project, documents, history);
@@ -2586,7 +2593,7 @@ const BillingView = ({ effectiveUser, projects, accounts, analytics }: { effecti
   const [billingTotalPages, setBillingTotalPages] = useState(1);
   
   const warningAccounts = useMemo(() => accounts.filter(acc => acc.status === 'warning'), [accounts]);
-  const suspendedAccounts = useMemo(() => accounts.filter(acc => acc.status === 'capped' || ((acc.totalSpentUsd || 0) >= (acc.monthly_limit_usd || 0))), [accounts]);
+  const suspendedAccounts = useMemo(() => accounts.filter(acc => acc.isBlocked || acc.status === 'capped' || acc.status === 'suspended' || ((acc.totalSpentUsd || 0) >= (acc.monthly_limit_usd || 0))), [accounts]);
 
   const [billingFilters, setBillingFilters] = useState({
     search: '',
@@ -3588,6 +3595,9 @@ const AdminDashboard = ({
     return 'ok';
   }, [billingStatus]);
 
+  const warningAccounts = useMemo(() => accounts.filter(acc => acc.status === 'warning'), [accounts]);
+  const suspendedAccounts = useMemo(() => accounts.filter(acc => acc.isBlocked || acc.status === 'capped' || acc.status === 'suspended'), [accounts]);
+
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
@@ -4002,6 +4012,28 @@ const AdminDashboard = ({
 
       {/* Main */}
       <main className="flex-1 p-4 md:p-10 overflow-y-auto">
+        {/* Admin-wide Billing Notifications */}
+        {effectiveUser?.role === 'admin' && (warningAccounts.length > 0 || suspendedAccounts.length > 0) && (
+          <div className="mb-6 space-y-3">
+            {suspendedAccounts.length > 0 && (
+              <div className="p-4 rounded-2xl border bg-red-50 border-red-200 text-red-700 flex items-center gap-3 shadow-sm">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                <div className="text-sm">
+                  <p className="font-bold">Attention: {suspendedAccounts.length} account(s) are suspended due to usage limits.</p>
+                </div>
+              </div>
+            )}
+            {warningAccounts.length > 0 && (
+              <div className="p-4 rounded-2xl border bg-amber-50 border-amber-200 text-amber-700 flex items-center gap-3 shadow-sm">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                <div className="text-sm">
+                  <p className="font-bold">Attention: {warningAccounts.length} account(s) have reached warning threshold.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {billingAccessState !== 'ok' && (
           <div className={`mb-6 p-4 rounded-2xl border flex items-center gap-3 ${
             billingAccessState === 'blocked' 

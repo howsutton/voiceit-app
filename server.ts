@@ -548,6 +548,7 @@ async function startServer() {
         const totalSpent = acc.totalSpentUsd || 0;
         const limit = acc.monthly_limit_usd ?? 100.0;
         const warningThreshold = (acc.warning_threshold_percent ?? 80) / 100;
+        const hardStopEnabled = acc.hard_stop_enabled === 1;
         
         let status = 'active';
         if (totalSpent >= limit) status = 'capped';
@@ -556,7 +557,8 @@ async function startServer() {
         return {
           ...acc,
           balance: limit - totalSpent,
-          status
+          status,
+          isBlocked: hardStopEnabled && (limit - totalSpent) <= 0
         };
       });
 
@@ -855,7 +857,7 @@ async function startServer() {
         if (billing && billing.isBlocked) {
           return res.status(402).json({ 
             code: 'ACCOUNT_SUSPENDED',
-            error: "Billing limit reached", 
+            error: "Account usage limit reached", 
             message: "Account usage limit reached" 
           });
         }
@@ -1402,26 +1404,34 @@ async function startServer() {
       
       // Collect all unique documents used in the session based on sources mentioned in QA
       const sessionDocsMap = new Map<string, any>();
-      const orderedDocIds: string[] = [];
+      const orderedDocKeys: string[] = [];
 
       qa.forEach(turn => {
-        turn.sources.forEach((s: any) => {
-          if (s.documentTitle) {
+        (turn.sources || []).forEach((s: any) => {
+          // Resolve source ref to actual document row more robustly
+          let doc = null;
+          if (s.documentId) {
+            doc = allDocs.find(d => d.id === s.documentId);
+          }
+          if (!doc && s.file_url) {
+            doc = allDocs.find(d => d.file_url === s.file_url);
+          }
+          if (!doc && s.documentTitle) {
             const normalizedTitle = s.documentTitle.trim().toLowerCase();
-            // Try to find the document by title
-            const doc = allDocs.find(d => d.title.trim().toLowerCase() === normalizedTitle);
-            if (doc) {
-              const docKey = doc.id || doc.file_url || doc.title;
-              if (!sessionDocsMap.has(docKey)) {
-                sessionDocsMap.set(docKey, doc);
-                orderedDocIds.push(docKey);
-              }
+            doc = allDocs.find(d => d.title.trim().toLowerCase() === normalizedTitle);
+          }
+
+          if (doc) {
+            const docKey = doc.id || doc.file_url || doc.title;
+            if (!sessionDocsMap.has(docKey)) {
+              sessionDocsMap.set(docKey, doc);
+              orderedDocKeys.push(docKey);
             }
           }
         });
       });
       
-      const docs = orderedDocIds.map(id => sessionDocsMap.get(id)).filter(Boolean);
+      const docs = orderedDocKeys.map(key => sessionDocsMap.get(key)).filter(Boolean);
       
       res.json({
         sessionId: session.id,
