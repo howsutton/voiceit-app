@@ -124,6 +124,21 @@ export interface Analytics {
     warningThresholdPercent?: number;
     hardStopEnabled?: boolean;
   };
+  location_points?: {
+    latitude: number;
+    longitude: number;
+    country: string;
+    city: string;
+    count: number;
+  }[];
+  top_countries?: {
+    country: string;
+    count: number;
+  }[];
+  device_breakdown?: {
+    mobile: number;
+    desktop: number;
+  };
 }
 
 export interface SourceCitation {

@@ -12,8 +12,26 @@ import {
 import { Project, Message, Document, Account, User as UserType, Analytics, ProjectMessageLogItem, GlobalMessageLogItem, UsageLogItem, PaginatedResponse } from './types';
 import { generateGroundedAnswer } from './services/aiService';
 import { QRCodeCanvas } from 'qrcode.react';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import MarkerClusterGroup from 'react-leaflet-cluster';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 
 import { GoogleGenAI, Modality, LiveServerMessage, Type, FunctionDeclaration } from "@google/genai";
+
+// Fix for default marker icons in Leaflet
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+
+let DefaultIcon = L.icon({
+    iconUrl: icon,
+    shadowUrl: iconShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41]
+});
+
+L.Marker.prototype.options.icon = DefaultIcon;
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
@@ -421,6 +439,48 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const [activePreviewSources, setActivePreviewSources] = useState<any[]>([]);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
   const selectedSource = activePreviewSources[activePreviewIndex] || null;
+
+  const getDeviceType = useCallback(() => {
+    const ua = navigator.userAgent;
+    if (/(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(ua)) {
+      return "mobile";
+    }
+    if (/Mobile|Android|iP(hone|od)|IEMobile|BlackBerry|Kindle|Silk-Accelerated|(hpw|web)OS|Opera M(obi|ini)/.test(ua)) {
+      return "mobile";
+    }
+    return "desktop";
+  }, []);
+
+  const getLocation = useCallback(async () => {
+    return new Promise<{latitude: number, longitude: number, country: string, city: string} | null>((resolve) => {
+      if (!navigator.geolocation) {
+        resolve(null);
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`);
+          if (res.ok) {
+            const data = await res.json();
+            resolve({
+              latitude,
+              longitude,
+              country: data.address?.country || 'Unknown',
+              city: data.address?.city || data.address?.town || data.address?.village || 'Unknown'
+            });
+          } else {
+            resolve({ latitude, longitude, country: 'Unknown', city: 'Unknown' });
+          }
+        } catch (e) {
+          resolve({ latitude, longitude, country: 'Unknown', city: 'Unknown' });
+        }
+      }, () => {
+        resolve(null);
+      }, { timeout: 5000 });
+    });
+  }, []);
   
   const setSelectedSource = useCallback((source: any) => {
     if (source === null) {
@@ -846,10 +906,21 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
 
       // Try to create a session on the backend, but don't block if it fails
       try {
+        const location = await getLocation();
+        const deviceType = getDeviceType();
+        
         const res = await fetch(`${API_BASE}/api/sessions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectId: project.id, mode: isVoiceMode ? 'voice' : 'text' })
+          body: JSON.stringify({ 
+            projectId: project.id, 
+            mode: isVoiceMode ? 'voice' : 'text',
+            latitude: location?.latitude,
+            longitude: location?.longitude,
+            country: location?.country,
+            city: location?.city,
+            device_type: deviceType
+          })
         });
         if (res.ok) {
           const data = await res.json();
@@ -2368,6 +2439,97 @@ const AccountDashboard = ({ account, projects, analytics }: { account: Account, 
             <h3 className="text-2xl font-bold text-slate-900">{stat.value}</h3>
           </div>
         ))}
+      </div>
+
+      {/* User Location Map */}
+      <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+        <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-6 flex items-center gap-2">
+          <Activity className="w-4 h-4" />
+          User Location Map
+        </h3>
+        <div className="h-[300px] w-full rounded-2xl overflow-hidden border border-slate-100">
+          <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <MarkerClusterGroup chunkedLoading>
+              {analytics?.location_points?.map((point, idx) => (
+                <Marker key={idx} position={[point.latitude, point.longitude]}>
+                  <Popup>
+                    <div className="text-xs font-bold text-slate-900">{point.city}, {point.country}</div>
+                    <div className="text-[10px] text-slate-500">{point.count} sessions</div>
+                  </Popup>
+                </Marker>
+              ))}
+            </MarkerClusterGroup>
+          </MapContainer>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Top Countries Table */}
+        <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm">
+          <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Top 5 Countries</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Rank</th>
+                  <th className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Country</th>
+                  <th className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Count</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {analytics?.top_countries?.map((c, i) => (
+                  <tr key={i} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-4 text-sm font-bold text-slate-400">#{i + 1}</td>
+                    <td className="py-4 text-sm font-bold text-slate-700">{c.country}</td>
+                    <td className="py-4 text-sm font-bold text-slate-900 text-right">{c.count}</td>
+                  </tr>
+                ))}
+                {(!analytics?.top_countries || analytics.top_countries.length === 0) && (
+                  <tr>
+                    <td colSpan={3} className="py-8 text-center text-slate-400 italic text-sm">No data available</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Device Breakdown Pie Chart */}
+        <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm">
+          <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Device Breakdown</h3>
+          <div className="h-[200px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={[
+                    { name: 'Mobile', value: analytics?.device_breakdown?.mobile || 0 },
+                    { name: 'Desktop', value: analytics?.device_breakdown?.desktop || 0 }
+                  ].filter(d => d.value > 0)}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={50}
+                  outerRadius={70}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  <Cell fill="#6366f1" />
+                  <Cell fill="#10b981" />
+                </Pie>
+                <RechartsTooltip 
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                />
+                <Legend verticalAlign="bottom" height={36}/>
+              </PieChart>
+            </ResponsiveContainer>
+            {(!analytics?.device_breakdown || (analytics.device_breakdown.mobile === 0 && analytics.device_breakdown.desktop === 0)) && (
+              <div className="flex items-center justify-center h-full text-slate-400 italic text-sm">No data available</div>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -4277,6 +4439,97 @@ const AdminDashboard = ({
                       <h3 className="text-xl md:text-2xl font-bold text-slate-900">{stat.value}</h3>
                     </div>
                   ))}
+                </div>
+
+                {/* User Location Map */}
+                <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm mb-10 overflow-hidden">
+                  <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-6 flex items-center gap-2">
+                    <Activity className="w-4 h-4" />
+                    User Location Map
+                  </h3>
+                  <div className="h-[400px] w-full rounded-2xl overflow-hidden border border-slate-100">
+                    <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
+                      <TileLayer
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      />
+                      <MarkerClusterGroup chunkedLoading>
+                        {analytics?.location_points?.map((point, idx) => (
+                          <Marker key={idx} position={[point.latitude, point.longitude]}>
+                            <Popup>
+                              <div className="text-xs font-bold text-slate-900">{point.city}, {point.country}</div>
+                              <div className="text-[10px] text-slate-500">{point.count} sessions</div>
+                            </Popup>
+                          </Marker>
+                        ))}
+                      </MarkerClusterGroup>
+                    </MapContainer>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
+                  {/* Top Countries Table */}
+                  <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm">
+                    <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Top 5 Countries</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="border-b border-slate-100">
+                            <th className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Rank</th>
+                            <th className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Country</th>
+                            <th className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Count</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {analytics?.top_countries?.map((c, i) => (
+                            <tr key={i} className="hover:bg-slate-50 transition-colors">
+                              <td className="py-4 text-sm font-bold text-slate-400">#{i + 1}</td>
+                              <td className="py-4 text-sm font-bold text-slate-700">{c.country}</td>
+                              <td className="py-4 text-sm font-bold text-slate-900 text-right">{c.count}</td>
+                            </tr>
+                          ))}
+                          {(!analytics?.top_countries || analytics.top_countries.length === 0) && (
+                            <tr>
+                              <td colSpan={3} className="py-8 text-center text-slate-400 italic text-sm">No data available</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Device Breakdown Pie Chart */}
+                  <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm">
+                    <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Device Breakdown</h3>
+                    <div className="h-[250px] w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={[
+                              { name: 'Mobile', value: analytics?.device_breakdown?.mobile || 0 },
+                              { name: 'Desktop', value: analytics?.device_breakdown?.desktop || 0 }
+                            ].filter(d => d.value > 0)}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={80}
+                            paddingAngle={5}
+                            dataKey="value"
+                          >
+                            <Cell fill="#6366f1" />
+                            <Cell fill="#10b981" />
+                          </Pie>
+                          <RechartsTooltip 
+                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                          />
+                          <Legend verticalAlign="bottom" height={36}/>
+                        </PieChart>
+                      </ResponsiveContainer>
+                      {(!analytics?.device_breakdown || (analytics.device_breakdown.mobile === 0 && analytics.device_breakdown.desktop === 0)) && (
+                        <div className="flex items-center justify-center h-full text-slate-400 italic text-sm">No data available</div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Sentiment Overview */}

@@ -3,6 +3,7 @@
   "description": "Enterprise AI Knowledge Assistant and Digital Engagement Platform for kiosks, privacy pods, and institutional knowledge access.",
   "requestFramePermissions": [
     "camera",
-    "microphone"
+    "microphone",
+    "geolocation"
   ]
 }

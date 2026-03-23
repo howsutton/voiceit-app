@@ -165,6 +165,15 @@ async function startServer() {
     } catch (e) {}
 
     try {
+      db.prepare("ALTER TABLE sessions ADD COLUMN latitude REAL").run();
+      db.prepare("ALTER TABLE sessions ADD COLUMN longitude REAL").run();
+      db.prepare("ALTER TABLE sessions ADD COLUMN country TEXT").run();
+      db.prepare("ALTER TABLE sessions ADD COLUMN city TEXT").run();
+      db.prepare("ALTER TABLE sessions ADD COLUMN device_type TEXT").run();
+      console.log("Added location and device columns to sessions table.");
+    } catch (e) {}
+
+    try {
       db.prepare("ALTER TABLE messages ADD COLUMN sentiment TEXT").run();
       console.log("Added sentiment column to messages table.");
     } catch (e) {}
@@ -697,6 +706,30 @@ async function startServer() {
       const sentimentNeu = db.prepare("SELECT count(*) as count FROM messages WHERE sentiment = 'neutral'").get() as any;
       const sentimentNeg = db.prepare("SELECT count(*) as count FROM messages WHERE sentiment = 'negative'").get() as any;
 
+      // New analytics for Map, Top Countries, and Device Breakdown
+      const locationPoints = db.prepare(`
+        SELECT latitude, longitude, country, city, count(*) as count 
+        FROM sessions 
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL 
+        GROUP BY latitude, longitude, country, city
+      `).all() as any[];
+
+      const topCountries = db.prepare(`
+        SELECT country, count(*) as count 
+        FROM sessions 
+        WHERE country IS NOT NULL 
+        GROUP BY country 
+        ORDER BY count DESC 
+        LIMIT 5
+      `).all() as any[];
+
+      const deviceBreakdown = db.prepare(`
+        SELECT 
+          SUM(CASE WHEN device_type = 'mobile' THEN 1 ELSE 0 END) as mobile,
+          SUM(CASE WHEN device_type = 'desktop' THEN 1 ELSE 0 END) as desktop
+        FROM sessions
+      `).get() as any;
+
       // Billing analytics
       const billing = db.prepare(`
         SELECT 
@@ -734,6 +767,12 @@ async function startServer() {
           textSpentUsd: billing.textSpentUsd || 0,
           voiceSeconds: billing.voiceSeconds || 0,
           textCharacters: billing.textCharacters || 0
+        },
+        location_points: locationPoints,
+        top_countries: topCountries,
+        device_breakdown: {
+          mobile: deviceBreakdown.mobile || 0,
+          desktop: deviceBreakdown.desktop || 0
         }
       });
     } catch (err) {
@@ -774,6 +813,34 @@ async function startServer() {
       const sentimentNeu = db.prepare("SELECT count(*) as count FROM messages m JOIN sessions s ON m.session_id = s.id JOIN projects p ON s.project_id = p.id WHERE p.account_id = ? AND m.sentiment = 'neutral'").get(accountId) as any;
       const sentimentNeg = db.prepare("SELECT count(*) as count FROM messages m JOIN sessions s ON m.session_id = s.id JOIN projects p ON s.project_id = p.id WHERE p.account_id = ? AND m.sentiment = 'negative'").get(accountId) as any;
 
+      // New analytics for Map, Top Countries, and Device Breakdown (Scoped)
+      const locationPoints = db.prepare(`
+        SELECT s.latitude, s.longitude, s.country, s.city, count(*) as count 
+        FROM sessions s 
+        JOIN projects p ON s.project_id = p.id 
+        WHERE p.account_id = ? AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL 
+        GROUP BY s.latitude, s.longitude, s.country, s.city
+      `).all(accountId) as any[];
+
+      const topCountries = db.prepare(`
+        SELECT s.country, count(*) as count 
+        FROM sessions s 
+        JOIN projects p ON s.project_id = p.id 
+        WHERE p.account_id = ? AND s.country IS NOT NULL 
+        GROUP BY s.country 
+        ORDER BY count DESC 
+        LIMIT 5
+      `).all(accountId) as any[];
+
+      const deviceBreakdown = db.prepare(`
+        SELECT 
+          SUM(CASE WHEN s.device_type = 'mobile' THEN 1 ELSE 0 END) as mobile,
+          SUM(CASE WHEN s.device_type = 'desktop' THEN 1 ELSE 0 END) as desktop
+        FROM sessions s 
+        JOIN projects p ON s.project_id = p.id 
+        WHERE p.account_id = ?
+      `).get(accountId) as any;
+
       // Billing analytics
       const billing = db.prepare(`
         SELECT 
@@ -811,6 +878,12 @@ async function startServer() {
           monthlyLimitUsd: account?.monthly_limit_usd ?? 100.0,
           warningThresholdPercent: account?.warning_threshold_percent ?? 80,
           hardStopEnabled: !!account?.hard_stop_enabled
+        },
+        location_points: locationPoints,
+        top_countries: topCountries,
+        device_breakdown: {
+          mobile: deviceBreakdown.mobile || 0,
+          desktop: deviceBreakdown.desktop || 0
         }
       });
     } catch (err) {
@@ -821,11 +894,13 @@ async function startServer() {
 
   app.post("/api/sessions", checkDb, (req, res) => {
     try {
-      const { projectId, mode } = req.body;
+      const { projectId, mode, latitude, longitude, country, city, device_type } = req.body;
       const id = Math.random().toString(36).substring(7);
-      db.prepare("INSERT INTO sessions (id, project_id, mode) VALUES (?, ?, ?)").run(id, projectId, mode || 'text');
+      db.prepare("INSERT INTO sessions (id, project_id, mode, latitude, longitude, country, city, device_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(id, projectId, mode || 'text', latitude || null, longitude || null, country || null, city || null, device_type || 'desktop');
       res.json({ id });
     } catch (err) {
+      console.error("Session creation failed:", err);
       res.status(500).json({ error: "Failed to create session" });
     }
   });
