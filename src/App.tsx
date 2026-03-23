@@ -15,6 +15,8 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import L from 'leaflet';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 
@@ -28,10 +30,20 @@ let DefaultIcon = L.icon({
     iconUrl: icon,
     shadowUrl: iconShadow,
     iconSize: [25, 41],
-    iconAnchor: [12, 41]
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41]
 });
 
 L.Marker.prototype.options.icon = DefaultIcon;
+
+const createCustomClusterIcon = (cluster: any) => {
+  return L.divIcon({
+    html: `<div class="bg-indigo-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-xs shadow-lg border-2 border-white">${cluster.getChildCount()}</div>`,
+    className: 'custom-marker-cluster',
+    iconSize: L.point(32, 32, true),
+  });
+};
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
@@ -2453,9 +2465,9 @@ const AccountDashboard = ({ account, projects, analytics }: { account: Account, 
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            <MarkerClusterGroup chunkedLoading>
+            <MarkerClusterGroup chunkedLoading iconCreateFunction={createCustomClusterIcon}>
               {analytics?.location_points?.map((point, idx) => (
-                <Marker key={idx} position={[point.latitude, point.longitude]}>
+                <Marker key={idx} position={[point.latitude, point.longitude]} icon={DefaultIcon}>
                   <Popup>
                     <div className="text-xs font-bold text-slate-900">{point.city}, {point.country}</div>
                     <div className="text-[10px] text-slate-500">{point.count} sessions</div>
@@ -4453,9 +4465,9 @@ const AdminDashboard = ({
                         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                       />
-                      <MarkerClusterGroup chunkedLoading>
+                      <MarkerClusterGroup chunkedLoading iconCreateFunction={createCustomClusterIcon}>
                         {analytics?.location_points?.map((point, idx) => (
-                          <Marker key={idx} position={[point.latitude, point.longitude]}>
+                          <Marker key={idx} position={[point.latitude, point.longitude]} icon={DefaultIcon}>
                             <Popup>
                               <div className="text-xs font-bold text-slate-900">{point.city}, {point.country}</div>
                               <div className="text-[10px] text-slate-500">{point.count} sessions</div>
