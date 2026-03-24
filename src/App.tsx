@@ -4,10 +4,10 @@ import {
   Mic, MicOff, Send, BookOpen, User as UserIcon, Settings, 
   LayoutDashboard, FileText, Activity, LogOut,
   ChevronRight, ChevronLeft, Volume2, Search, Info, Camera, Trash2,
-  Clock, RefreshCw, Plus, CheckCircle2, Phone, Mail, Printer, Download,
-  ExternalLink,
+  Clock, RefreshCw, Plus, CheckCircle2, Phone, PhoneOff, Mail, Printer, Download,
+  ExternalLink, Database, Layers,
   Building2, Smile, Meh, Frown, Hash, MessageSquare, CreditCard, TrendingUp, AlertCircle,
-  AlertTriangle, Ban
+  AlertTriangle, Ban, X
 } from 'lucide-react';
 import { Project, Message, Document, Account, User as UserType, Analytics, ProjectMessageLogItem, GlobalMessageLogItem, UsageLogItem, PaginatedResponse } from './types';
 import { generateGroundedAnswer } from './services/aiService';
@@ -84,10 +84,13 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-4">
-          <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin" />
-          <p className="text-slate-500 font-medium">Loading summary...</p>
+      <div className="min-h-screen flex items-center justify-center bg-bloom bg-dots">
+        <div className="flex flex-col items-center gap-6">
+          <div className="relative">
+            <div className="w-16 h-16 bg-app-accent/20 rounded-full blur-2xl absolute inset-0 animate-pulse" />
+            <RefreshCw className="w-10 h-10 text-app-accent animate-spin relative z-10" />
+          </div>
+          <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-xs">Decrypting Summary...</p>
         </div>
       </div>
     );
@@ -95,13 +98,22 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
 
   if (error || !summary) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center p-8 bg-white rounded-3xl shadow-xl border border-slate-200 max-w-md">
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">Session Not Found</h1>
-          <p className="text-slate-500">{error || "The session summary you are looking for is no longer available or the link is invalid."}</p>
-          <div className="mt-6 pt-6 border-t border-slate-100">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Contact Support</p>
-            <p className="text-slate-600 text-sm">info@lawcommission.gov.kn</p>
+      <div className="min-h-screen flex items-center justify-center bg-bloom bg-dots p-6">
+        <div className="text-center p-10 bg-surface-low border border-white/10 rounded-[40px] max-w-md shadow-2xl">
+          <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <AlertTriangle className="w-8 h-8 text-red-500" />
+          </div>
+          <h1 className="text-2xl font-bold text-white mb-3 tracking-tight">Session Expired</h1>
+          <p className="text-slate-300 leading-relaxed mb-8">{error || "The session summary you are looking for is no longer available or the link is invalid."}</p>
+          <div className="pt-8 border-t border-white/5">
+            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-indigo-400 mb-4">Support Protocol</p>
+            <div className="space-y-2">
+              <p className="text-white font-medium text-sm">support@voiceit.ai</p>
+              <p className="text-slate-500 text-xs flex items-center gap-2">
+                <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-9 w-auto" referrerPolicy="no-referrer" />
+                Enterprise Support
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -109,133 +121,175 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 md:p-12 font-sans">
+    <div className="min-h-screen bg-bloom bg-dots p-6 md:p-12 font-sans text-white overflow-y-auto">
       <div className="max-w-3xl mx-auto">
-        <header className="mb-12 flex justify-between items-center">
+        <header className="mb-16 flex justify-between items-end">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Session Summary</h1>
-            <p className="text-slate-500">VoiceIt Assistant Interaction • {new Date(summary.timestamp).toLocaleDateString()}</p>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+              <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-app-accent">Verified Session</span>
+            </div>
+            <h1 className="text-4xl md:text-5xl font-bold tracking-tighter mb-2">Session Summary</h1>
+            <p className="text-app-muted font-medium flex items-center gap-2">
+              <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-12 w-auto" referrerPolicy="no-referrer" />
+              Assistant • {new Date(summary.timestamp).toLocaleDateString(undefined, { dateStyle: 'long' })}
+            </p>
           </div>
-          <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-100">
-            <Volume2 className="w-6 h-6" />
+          <div className="w-14 h-14 glass-panel rounded-2xl flex items-center justify-center text-app-accent shadow-[0_0_30px_rgba(59,130,246,0.2)]">
+            <Volume2 className="w-7 h-7" />
           </div>
         </header>
 
-        <section className="space-y-8 mb-12">
-          <h2 className="text-xl font-bold text-slate-800 border-b border-slate-200 pb-2 flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-            Questions & Answers
-          </h2>
+        <section className="space-y-12 mb-20">
+          <div className="flex items-center gap-4 mb-8">
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent to-white/10" />
+            <h2 className="text-xs font-bold text-app-accent uppercase tracking-[0.4em] whitespace-nowrap">
+              Interaction Log
+            </h2>
+            <div className="h-px flex-1 bg-gradient-to-l from-transparent to-white/10" />
+          </div>
+
           {summary.qa && summary.qa.length > 0 ? (
             summary.qa.map((item: any, i: number) => (
-              <div key={i} className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-100 hover:border-indigo-100 transition-all">
-                <div className="mb-6">
-                  <p className="text-indigo-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-3">Question</p>
-                  <p className="text-slate-900 font-bold text-xl md:text-2xl leading-tight">{item.q}</p>
-                </div>
-        <div className="pl-4 border-l-4 border-emerald-500 bg-emerald-50/30 p-4 rounded-r-2xl">
-          <p className="text-emerald-600 font-bold text-[10px] uppercase tracking-[0.2em] mb-2">VoiceIt Answer</p>
-          <p className="text-slate-700 leading-relaxed text-lg">{item.a}</p>
-          {item.sources && item.sources.length > 0 && (
-            <div className="mt-4 space-y-2">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sources</p>
-              <div className="flex flex-wrap gap-2">
-                {item.sources.map((src: any, si: number) => (
-                  <div key={si} className="group relative">
-                    <div className="text-[10px] bg-white px-2 py-1.5 rounded-lg border border-emerald-100 text-emerald-700 flex items-center gap-1.5 shadow-sm">
-                      <BookOpen className="w-3 h-3" />
-                      <span className="font-medium">{src.documentTitle}</span>
-                      <span className="opacity-40">•</span>
-                      <span>p. {src.pageNumber}</span>
+              <div key={i} className="glass-panel p-8 md:p-10 rounded-[40px] relative overflow-hidden group hover:border-app-accent/30 transition-all duration-500">
+                <div className="absolute -top-24 -right-24 w-48 h-48 bg-app-accent/5 rounded-full blur-3xl group-hover:bg-app-accent/10 transition-all" />
+                
+                <div className="mb-10 relative z-10">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center">
+                      <MessageSquare className="w-4 h-4 text-app-muted" />
                     </div>
-                    {src.excerpt && (
-                      <div className="mt-2 p-4 bg-slate-50 border-l-4 border-indigo-200 rounded-r-2xl text-xs text-slate-600 italic leading-relaxed shadow-sm">
-                        <p className="font-bold text-[9px] uppercase tracking-widest text-indigo-400 mb-1 not-italic">Excerpt</p>
-                        "{src.excerpt}"
-                      </div>
-                    )}
+                    <p className="text-app-muted font-bold text-[10px] uppercase tracking-[0.3em]">User Query</p>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+                  <p className="text-white font-bold text-2xl md:text-3xl leading-tight tracking-tight">{item.q}</p>
+                </div>
+
+                <div className="relative z-10 pl-6 border-l-2 border-app-accent bg-app-accent/5 p-6 md:p-8 rounded-r-[32px]">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-8 h-8 rounded-lg bg-app-accent/20 flex items-center justify-center">
+                      <Volume2 className="w-4 h-4 text-app-accent" />
+                    </div>
+                    <p className="text-app-accent font-bold text-[10px] uppercase tracking-[0.3em] flex items-center gap-2">
+                      <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-9 w-auto" referrerPolicy="no-referrer" />
+                      Response
+                    </p>
+                  </div>
+                  <p className="text-white/90 leading-relaxed text-lg md:text-xl font-medium">{item.a}</p>
+                  
+                  {item.sources && item.sources.length > 0 && (
+                    <div className="mt-8 pt-8 border-t border-white/5 space-y-4">
+                      <p className="text-[10px] font-bold text-app-muted uppercase tracking-[0.3em]">Knowledge Sources</p>
+                      <div className="flex flex-wrap gap-3">
+                        {item.sources.map((src: any, si: number) => (
+                          <div key={si} className="group/source relative">
+                            <div className="text-[10px] glass-panel px-4 py-2 rounded-xl text-white/70 flex items-center gap-2 hover:bg-white/10 transition-all cursor-default">
+                              <BookOpen className="w-3.5 h-3.5 text-app-accent" />
+                              <span className="font-bold">{src.documentTitle}</span>
+                              <span className="opacity-30">•</span>
+                              <span className="text-app-accent">Page {src.pageNumber}</span>
+                            </div>
+                            {src.excerpt && (
+                              <div className="mt-3 p-5 bg-white/5 border-l-2 border-app-accent/30 rounded-r-2xl text-sm text-white/60 italic leading-relaxed">
+                                <p className="font-bold text-[9px] uppercase tracking-[0.2em] text-app-accent mb-2 not-italic">Verified Excerpt</p>
+                                "{src.excerpt}"
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             ))
           ) : (
-            <p className="text-slate-400 italic">No questions were recorded in this session.</p>
+            <div className="text-center py-20 glass-panel rounded-[40px] border-dashed">
+              <p className="text-app-muted font-medium italic">No interaction data found for this session.</p>
+            </div>
           )}
         </section>
 
-        <section className="space-y-4 mb-12">
-          <h2 className="text-xl font-bold text-slate-800 border-b border-slate-200 pb-2 flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-indigo-500" />
-            Source Documents
-          </h2>
+        <section className="space-y-6 mb-20">
+          <div className="flex items-center gap-4 mb-8">
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent to-white/10" />
+            <h2 className="text-xs font-bold text-app-accent uppercase tracking-[0.4em] whitespace-nowrap">
+              Reference Library
+            </h2>
+            <div className="h-px flex-1 bg-gradient-to-l from-transparent to-white/10" />
+          </div>
+
           {summary.sources && summary.sources.length > 0 ? (
             <div className="grid grid-cols-1 gap-4">
-              {/* Deduplicate sources by stable key */}
               {Array.from(new Map(summary.sources.map((item: any) => [item.id || item.file_url || item.title, item])).values()).map((doc: any, i: number) => (
-                <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:border-indigo-300 transition-all shadow-sm">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-500 transition-all">
-                      <FileText className="w-6 h-6" />
+                <div key={i} className="glass-panel p-6 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-6 group hover:border-app-accent/30 transition-all duration-300">
+                  <div className="flex items-center gap-5">
+                    <div className="w-14 h-14 bg-white/5 rounded-2xl flex items-center justify-center text-app-muted group-hover:bg-app-accent/10 group-hover:text-app-accent transition-all">
+                      <FileText className="w-7 h-7" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-slate-900">{doc.title}</h3>
-                      <p className="text-xs text-slate-500">{doc.page_count} pages • {doc.mime_type || 'Document'}</p>
+                      <h3 className="font-bold text-white text-lg leading-tight mb-1">{doc.title}</h3>
+                      <p className="text-[10px] text-app-muted uppercase tracking-widest font-bold">{doc.page_count} pages • {doc.mime_type || 'PDF Document'}</p>
                     </div>
                   </div>
                   {doc.file_url ? (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       <a 
                         href={doc.file_url} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-all"
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-xs font-bold text-white transition-all"
                       >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        View Document
+                        <ExternalLink className="w-4 h-4" />
+                        View
                       </a>
                       <a 
                         href={doc.file_url} 
                         download={doc.original_filename || doc.title}
-                        className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-all"
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-app-accent text-white rounded-2xl text-xs font-bold hover:brightness-110 transition-all shadow-[0_0_20px_rgba(59,130,246,0.2)]"
                       >
-                        <Download className="w-3.5 h-3.5" />
+                        <Download className="w-4 h-4" />
                         Download
                       </a>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 text-slate-400 rounded-xl text-xs font-bold italic">
-                      No link available
+                    <div className="px-6 py-3 bg-white/5 text-app-muted rounded-2xl text-[10px] font-bold uppercase tracking-widest italic">
+                      Restricted Access
                     </div>
                   )}
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-slate-400 italic">No source documents were referenced or available for download.</p>
+            <p className="text-app-muted text-center py-10 italic">No reference documents were utilized in this session.</p>
           )}
         </section>
 
-        <footer className="pt-12 border-t border-slate-200 text-center pb-12">
-          <div className="inline-flex items-center gap-2 text-slate-900 font-bold text-lg mb-6">
-            <Volume2 className="w-5 h-5 text-indigo-600" />
-            VoiceIt Assistant
+        <footer className="pt-16 border-t border-white/5 text-center pb-20">
+          <div className="inline-flex items-center gap-3 text-white font-bold text-xl mb-8 tracking-tight">
+            <div className="w-10 h-10 glass-panel rounded-xl flex items-center justify-center">
+              <Volume2 className="w-5 h-5 text-app-accent" />
+            </div>
+            <div className="flex items-center gap-2">
+              <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-[60px] w-auto" referrerPolicy="no-referrer" />
+              Assistant
+            </div>
           </div>
-          <div className="flex flex-col items-center gap-4">
-            <div className="flex justify-center gap-6">
-              <div className="flex items-center gap-2 text-slate-400 text-xs">
-                <Phone className="w-3 h-3" />
-                869-467-1623
+          <div className="flex flex-col items-center gap-8">
+            <div className="flex flex-wrap justify-center gap-10">
+              <div className="flex flex-col items-center gap-2">
+                <p className="text-[9px] font-bold uppercase tracking-[0.3em] text-app-muted">Inquiries</p>
+                <p className="text-white font-medium">869-467-1623</p>
               </div>
-              <div className="flex items-center gap-2 text-slate-400 text-xs">
-                <Mail className="w-3 h-3" />
-                info@lawcommission.gov.kn
+              <div className="flex flex-col items-center gap-2">
+                <p className="text-[9px] font-bold uppercase tracking-[0.3em] text-app-muted">Email</p>
+                <p className="text-white font-medium">info@lawcommission.gov.kn</p>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <p className="text-[9px] font-bold uppercase tracking-[0.3em] text-app-muted">Developer</p>
+                <p className="text-white font-medium">Cherami Ltd.</p>
               </div>
             </div>
-            <p className="text-slate-500 text-sm font-medium">Cherami Ltd. · 868-222-0011</p>
+            <p className="text-app-muted text-[10px] font-bold uppercase tracking-[0.5em] mt-4">Secure AI Infrastructure</p>
           </div>
         </footer>
       </div>
@@ -260,7 +314,10 @@ const SummaryPopup = ({ sessionId, onClose, onPrint }: { sessionId: string, onCl
       {/* Printable Area (Hidden in UI, visible in print) */}
       <div id="print-area" className="hidden">
         <div style={{ textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>
-          <h1 style={{ fontSize: '18px', margin: '0' }}>VoiceIt Session</h1>
+          <div className="flex items-center gap-2" style={{ margin: '0' }}>
+            <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-[72px] w-auto" referrerPolicy="no-referrer" />
+            <h1 style={{ fontSize: '18px', margin: '0' }}>Session</h1>
+          </div>
           <p style={{ fontSize: '10px', color: '#666', margin: '2px 0' }}>Thank you for visiting</p>
         </div>
         
@@ -313,47 +370,61 @@ const SummaryPopup = ({ sessionId, onClose, onPrint }: { sessionId: string, onCl
       <motion.div 
         initial={{ scale: 0.9, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="bg-white rounded-[40px] p-8 md:p-12 max-w-2xl w-full text-center shadow-2xl relative overflow-hidden no-print"
+        className="glass-panel rounded-[40px] p-8 md:p-12 max-w-2xl w-full text-center shadow-2xl relative overflow-hidden no-print"
       >
         {/* UI Content */}
-        <div className="no-print">
-          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-600 via-indigo-500 to-emerald-400" />
+        <div className="no-print relative z-10">
+          <div className="absolute -top-12 -left-12 w-48 h-48 bg-app-accent/10 rounded-full blur-3xl" />
+          <div className="absolute -bottom-12 -right-12 w-48 h-48 bg-app-warning/10 rounded-full blur-3xl" />
           
-          <div className="mb-6 inline-flex items-center justify-center w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl">
+          <div className="mb-6 inline-flex items-center justify-center w-16 h-16 bg-app-accent/10 text-app-accent rounded-2xl border border-app-accent/20">
             <CheckCircle2 className="w-8 h-8" />
           </div>
           
-          <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">Thank You!</h2>
-          <p className="text-slate-500 text-lg mb-8">Thank you for using the VoiceIt application.</p>
+          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4 tracking-tight">Session Complete</h2>
+          <p className="text-app-muted text-lg mb-8 flex items-center justify-center gap-2">
+            Thank you for using 
+            <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-[60px] w-auto" referrerPolicy="no-referrer" />. 
+            Your session has been securely summarized.
+          </p>
           
           <div className="flex flex-col items-center justify-center mb-10">
-            <div className="p-6 bg-white rounded-3xl border-2 border-slate-100 shadow-xl">
+            <div className="p-6 bg-white rounded-3xl shadow-[0_0_40px_rgba(255,255,255,0.1)]">
               <QRCodeCanvas value={summaryUrl} size={180} level="H" includeMargin={true} />
             </div>
-            <p className="mt-4 text-slate-400 text-[10px] font-bold uppercase tracking-[0.2em]">Scan to save your session summary</p>
+            <p className="mt-4 text-app-accent text-[10px] font-bold uppercase tracking-[0.3em] animate-pulse">Scan to save your summary</p>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10 text-left">
-            <div className="space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Contact Information</p>
-              <div className="flex items-center gap-2 text-slate-700">
-                <Phone className="w-4 h-4 text-slate-300" />
-                <span className="font-medium">869-467-1623</span>
+            <div className="space-y-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-app-muted">Contact Information</p>
+              <div className="flex items-center gap-3 text-white/80">
+                <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center">
+                  <Phone className="w-4 h-4 text-app-accent" />
+                </div>
+                <span className="font-medium text-sm">869-467-1623</span>
               </div>
-              <div className="flex items-center gap-2 text-slate-700">
-                <Mail className="w-4 h-4 text-slate-300" />
-                <span className="font-medium text-sm">info@lawcommission.gov.kn</span>
+              <div className="flex items-center gap-3 text-white/80">
+                <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center">
+                  <Mail className="w-4 h-4 text-app-accent" />
+                </div>
+                <span className="font-medium text-sm truncate">info@lawcommission.gov.kn</span>
               </div>
             </div>
             
-            <div className="space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Powered By</p>
-              <div className="flex items-center gap-2 text-slate-900">
+            <div className="space-y-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-app-muted">Powered By</p>
+              <div className="flex items-center gap-3 text-white">
+                <div className="w-8 h-8 rounded-lg bg-app-accent/20 flex items-center justify-center">
+                  <Building2 className="w-4 h-4 text-app-accent" />
+                </div>
                 <span className="font-bold">Cherami Ltd.</span>
               </div>
-              <div className="flex items-center gap-2 text-slate-700">
-                <Phone className="w-4 h-4 text-slate-300" />
-                <span className="font-medium">868-222-0011</span>
+              <div className="flex items-center gap-3 text-white/80">
+                <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center">
+                  <Phone className="w-4 h-4 text-app-accent" />
+                </div>
+                <span className="font-medium text-sm">868-222-0011</span>
               </div>
             </div>
           </div>
@@ -361,14 +432,14 @@ const SummaryPopup = ({ sessionId, onClose, onPrint }: { sessionId: string, onCl
           <div className="flex flex-col sm:flex-row gap-4">
             <button 
               onClick={handlePrint}
-              className="flex-1 py-5 bg-white border-2 border-slate-200 text-slate-900 rounded-2xl font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+              className="flex-1 py-5 bg-white/5 border border-white/10 text-white rounded-2xl font-bold hover:bg-white/10 transition-all flex items-center justify-center gap-2"
             >
               <Printer className="w-5 h-5" />
               Print Receipt
             </button>
             <button 
               onClick={onClose}
-              className="flex-1 py-5 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 active:scale-[0.98]"
+              className="flex-1 py-5 bg-app-accent text-white rounded-2xl font-bold hover:brightness-110 transition-all shadow-[0_0_30px_rgba(59,130,246,0.3)] active:scale-[0.98]"
             >
               Close & Finish
             </button>
@@ -379,57 +450,106 @@ const SummaryPopup = ({ sessionId, onClose, onPrint }: { sessionId: string, onCl
   );
 };
 
-const VoiceOrb = ({ isSpeaking, isThinking, isShowingSourcePending, onClick }: { isSpeaking: boolean, isThinking: boolean, isShowingSourcePending?: boolean, onClick?: () => void }) => {
+const VoiceOrb = ({ isSpeaking, isListening, isThinking, isShowingSourcePending, onClick }: { isSpeaking: boolean, isListening: boolean, isThinking: boolean, isShowingSourcePending?: boolean, onClick?: () => void }) => {
+  // Simulate dynamic voice activity when speaking
+  const [pulseScale, setPulseScale] = useState(1);
+  const [glowIntensity, setGlowIntensity] = useState(1);
+  
+  useEffect(() => {
+    let interval: any;
+    if (isSpeaking) {
+      interval = setInterval(() => {
+        // More dynamic, speech-like pulsing
+        setPulseScale(1 + Math.random() * 0.15);
+        setGlowIntensity(1 + Math.random() * 0.6);
+      }, 70);
+    } else {
+      setPulseScale(1);
+      setGlowIntensity(1);
+    }
+    return () => clearInterval(interval);
+  }, [isSpeaking]);
+
   return (
     <div 
       onClick={onClick}
-      className={`relative w-48 h-48 md:w-64 md:h-64 flex items-center justify-center ${onClick ? 'cursor-pointer active:scale-95 transition-transform' : ''}`}
+      className={`relative w-40 h-40 md:w-[280px] md:h-[280px] flex items-center justify-center ${onClick ? 'cursor-pointer active:scale-95 transition-transform' : ''}`}
     >
-      {/* Outer Glow */}
-      <div className={`absolute inset-0 rounded-full bg-blue-500/20 blur-[60px] md:blur-[80px] transition-all duration-1000 ${isSpeaking ? 'scale-150 opacity-100' : 'scale-100 opacity-40'}`} />
+      {/* Ambient Radial Glow - Bloom Effect */}
+      <div 
+        className={`absolute inset-0 rounded-full bg-app-accent/20 blur-[60px] md:blur-[120px] transition-all duration-700 ${isSpeaking ? 'opacity-100' : isListening ? 'scale-125 opacity-80' : 'scale-100 opacity-40'}`} 
+        style={{ transform: `scale(${isSpeaking ? 1.5 * glowIntensity : 1})` }}
+      />
       
-      {/* Core Orb */}
+      {/* Secondary Glow Layer */}
+      <div 
+        className={`absolute inset-0 rounded-full bg-indigo-500/10 blur-[50px] md:blur-[90px] transition-all duration-700 delay-150 ${isSpeaking ? 'opacity-90' : isListening ? 'scale-110 opacity-70' : 'scale-90 opacity-20'}`} 
+        style={{ transform: `scale(${isSpeaking ? 1.25 * glowIntensity : 1})` }}
+      />
+
+      {/* Ripple Effects for Speaking and Listening */}
+      {(isListening || isSpeaking) && (
+        <>
+          <motion.div 
+            initial={{ scale: 1, opacity: 0.5 }}
+            animate={{ scale: isSpeaking ? 2.2 : 1.5, opacity: 0 }}
+            transition={{ repeat: Infinity, duration: isSpeaking ? 1.5 : 2, ease: "easeOut" }}
+            className={`absolute inset-0 border-2 rounded-full ${isSpeaking ? 'border-white/30' : 'border-app-accent/30'}`}
+          />
+          <motion.div 
+            initial={{ scale: 1, opacity: 0.3 }}
+            animate={{ scale: isSpeaking ? 2.5 : 1.8, opacity: 0 }}
+            transition={{ repeat: Infinity, duration: isSpeaking ? 1.5 : 2, delay: 0.5, ease: "easeOut" }}
+            className={`absolute inset-0 border rounded-full ${isSpeaking ? 'border-white/20' : 'border-app-accent/20'}`}
+          />
+        </>
+      )}
+
+      {/* Core Orb Container */}
       <motion.div
         animate={{
-          scale: isSpeaking ? [1, 1.1, 1] : 1,
-          rotate: 360
+          scale: isSpeaking ? pulseScale : isListening ? [1, 1.03, 1] : 1,
         }}
         transition={{
-          scale: { repeat: Infinity, duration: 2 },
-          rotate: { repeat: Infinity, duration: 20, ease: "linear" }
+          scale: isSpeaking ? { type: "spring", stiffness: 400, damping: 12 } : { repeat: Infinity, duration: 1.5, ease: "easeInOut" },
         }}
-        className={`relative w-36 h-36 md:w-48 md:h-48 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-500 to-emerald-400 shadow-[0_0_30px_rgba(59,130,246,0.5)] md:shadow-[0_0_50px_rgba(59,130,246,0.5)] flex items-center justify-center overflow-hidden`}
+        className="relative w-40 h-40 md:w-56 md:h-56 rounded-full flex items-center justify-center overflow-hidden shadow-[0_0_100px_rgba(0,92,170,0.3)]"
       >
-        {/* Swirling inner details */}
-        <div className="absolute inset-0 opacity-30 animate-orb-rotate">
-          <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,_white_0%,_transparent_70%)] blur-xl" />
-        </div>
+        {/* Smooth Gradient Fill - 135deg per Design System */}
+        <div 
+          className={`absolute inset-0 transition-all duration-700 ${isSpeaking ? 'brightness-150 saturate-150' : isListening ? 'brightness-110 saturate-110' : 'brightness-90 saturate-90'}`} 
+          style={{ 
+            background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-container) 100%)',
+            filter: isSpeaking ? `contrast(1.2) brightness(${glowIntensity})` : 'none'
+          }} 
+        />
         
-        {/* Pulse Ring */}
+        {/* Surface Highlight / Reflection */}
+        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-white/20 to-transparent opacity-30" />
+        
+        {/* Inner Ambient Glow */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_white_0%,_transparent_70%)] opacity-10 animate-orb-inner-pulse" />
+        
+        {/* Glassy Overlay */}
+        <div className="absolute inset-0 rounded-full border border-outline-variant bg-white/5 backdrop-blur-[2px] shadow-inner" />
+        
+        {/* Speaking Pulse Ring */}
         {isSpeaking && (
           <motion.div 
             initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 2, opacity: 0 }}
-            transition={{ repeat: Infinity, duration: 1.5 }}
-            className="absolute inset-0 border-2 border-white/30 rounded-full"
+            animate={{ scale: 2.2, opacity: 0 }}
+            transition={{ repeat: Infinity, duration: 2 }}
+            className="absolute inset-0 border-2 border-white/40 rounded-full"
           />
         )}
       </motion.div>
 
-      {/* Thinking Indicator */}
+      {/* Thinking Indicator - Integrated more elegantly */}
       {isThinking && (
-        <div className="absolute -bottom-8 flex gap-2">
-          <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" />
-          <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:0.2s]" />
-          <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce [animation-delay:0.4s]" />
-        </div>
-      )}
-
-      {/* Fetching Source Indicator */}
-      {isShowingSourcePending && (
-        <div className="absolute -bottom-12 flex items-center gap-2 bg-indigo-600/20 px-3 py-1 rounded-full border border-indigo-500/30">
-          <BookOpen className="w-3 h-3 text-indigo-400 animate-pulse" />
-          <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">Fetching source...</span>
+        <div className="absolute bottom-4 flex gap-3 z-30">
+          <motion.span animate={{ opacity: [0.3, 1, 0.3], scale: [0.9, 1.1, 0.9] }} transition={{ repeat: Infinity, duration: 1.2 }} className="w-2.5 h-2.5 bg-white rounded-full shadow-[0_0_15px_rgba(255,255,255,0.8)]" />
+          <motion.span animate={{ opacity: [0.3, 1, 0.3], scale: [0.9, 1.1, 0.9] }} transition={{ repeat: Infinity, duration: 1.2, delay: 0.2 }} className="w-2.5 h-2.5 bg-white rounded-full shadow-[0_0_15px_rgba(255,255,255,0.8)]" />
+          <motion.span animate={{ opacity: [0.3, 1, 0.3], scale: [0.9, 1.1, 0.9] }} transition={{ repeat: Infinity, duration: 1.2, delay: 0.4 }} className="w-2.5 h-2.5 bg-white rounded-full shadow-[0_0_15px_rgba(255,255,255,0.8)]" />
         </div>
       )}
     </div>
@@ -451,6 +571,30 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const [activePreviewSources, setActivePreviewSources] = useState<any[]>([]);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
   const selectedSource = activePreviewSources[activePreviewIndex] || null;
+
+  const [showSettings, setShowSettings] = useState(false);
+
+  useEffect(() => {
+    if (isPresent && !isVoiceMode) {
+      // Switched to text mode
+      stopAudioPlayback();
+      if (liveSessionRef.current) {
+        console.log("Closing live session for text mode...");
+        try {
+          liveSessionRef.current.close();
+        } catch (e) {}
+        liveSessionRef.current = null;
+      }
+      setIsListening(false);
+      setIsThinking(false);
+    } else if (isPresent && isVoiceMode) {
+      // Switched back to voice mode
+      if (!liveSessionRef.current && connectionStatus !== 'connecting') {
+        console.log("Restarting live session for voice mode...");
+        connectLive(documents, true);
+      }
+    }
+  }, [isVoiceMode, isPresent]);
 
   const getDeviceType = useCallback(() => {
     const ua = navigator.userAgent;
@@ -508,6 +652,49 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+
+  const remainingTimeFormatted = useMemo(() => {
+    if (remainingSeconds === null) return "00:00";
+    const mins = Math.floor(remainingSeconds / 60);
+    const secs = remainingSeconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }, [remainingSeconds]);
+
+  const shortAIText = useMemo(() => {
+    if (isThinking) return "Analyzing your documents...";
+    
+    // Find the last model message to show as a summary
+    const lastModelMessage = [...messages].reverse().find(m => m.role === 'model');
+    const content = lastModelMessage?.content || "";
+    
+    if (content) {
+      // Split by sentence boundaries (period, exclamation, question mark followed by space or end of string)
+      const sentences = content.match(/[^.!?]+[.!?]+(?=\s|$)/g) || [content];
+      
+      if (sentences.length > 2) {
+        return sentences.slice(0, 2).join(' ');
+      }
+      
+      // Fallback for very long content without clear sentence boundaries
+      if (content.length > 160 && sentences.length <= 1) {
+        return content.substring(0, 157) + "...";
+      }
+      return content;
+    }
+    
+    if (isListening) return "I'm listening to your request...";
+    return "How can I help today?";
+  }, [isListening, isThinking, messages]);
+
+  const [isMuted, setIsMuted] = useState(false);
+
+  useEffect(() => {
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getAudioTracks().forEach(track => {
+        track.enabled = !isMuted;
+      });
+    }
+  }, [isMuted]);
   
   const isPresentRef = useRef(false);
   const connectionStatusRef = useRef<'idle' | 'connecting' | 'connected' | 'error'>('idle');
@@ -545,6 +732,25 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     if (billingStatus.status === 'warning') return 'warning';
     return 'ok';
   }, [billingStatus]);
+
+  useEffect(() => {
+    return () => {
+      console.log("KioskMode unmounting, cleaning up...");
+      stopAudioPlayback();
+      if (liveSessionRef.current) {
+        intentionalCloseRef.current = true;
+        try {
+          liveSessionRef.current.close();
+        } catch (e) {}
+        liveSessionRef.current = null;
+      }
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
+      }
+    };
+  }, []);
+
   const hasPromptedRef = useRef<boolean>(false);
   const lastSeenTimeRef = useRef<number | null>(null);
   const currentTurnRef = useRef<{ userText: string, modelText: string, sources: any[] }>({ userText: '', modelText: '', sources: [] });
@@ -981,7 +1187,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     }
   };
 
-  const connectLive = async (currentDocs?: Document[], isReturn: boolean = false) => {
+  const connectLive = async (currentDocs?: Document[], isReturn: boolean = false, initialHistory?: Message[]) => {
     if (billingAccessState === 'blocked') {
       console.warn("AI usage blocked due to billing limit.");
       return;
@@ -996,7 +1202,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     }
     
     const docsToUse = currentDocs || documents;
-    console.log(`Connecting to Gemini Live with ${docsToUse.length} documents. Is return: ${isReturn}`);
+    console.log(`Connecting to Gemini Live with ${docsToUse.length} documents. Is return: ${isReturn}. History: ${initialHistory?.length || 0} msgs`);
     
     try {
       console.log("Connecting to Gemini Live...");
@@ -1026,17 +1232,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       const contextText = docsToUse.map(d => `SOURCE DOCUMENT: ${d.title}\nCONTENT:\n${d.content}`).join("\n\n---\n\n");
       
       console.log("Context text length:", contextText.length);
-      if (contextText.length > 0) {
-        console.log("Context text snippet:", contextText.substring(0, 1000) + "...");
-      } else {
-        console.warn("Context text is EMPTY! Check if documents have content.");
-      }
       
-      // Log individual document content lengths
-      docsToUse.forEach(d => {
-        console.log(`Document in context: ${d.title}, Content length: ${d.content?.length || 0}`);
-      });
-
       const showSourceFunctionDeclaration: FunctionDeclaration = {
         name: "showSource",
         parameters: {
@@ -1176,26 +1372,49 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
             isModelSpeakingRef.current = false;
             
             // Trigger proactive greeting via text signal
-            const signal = isReturn ? 'RETURN_PRESENCE' : 'NEW_PRESENCE';
-            const promptText = isReturn 
-              ? `[SIGNAL: ${signal}] The user has returned. Please greet them back warmly.` 
-              : `[SIGNAL: ${signal}] A new user has arrived. Please introduce yourself and welcome them as the ${project.title} assistant.`;
+            if (initialHistory && initialHistory.length > 0) {
+              console.log("Resuming session with history...");
+              const historyTurns = initialHistory.map(msg => ({
+                role: msg.role === 'user' ? 'user' : 'model',
+                parts: [{ text: msg.content }]
+              }));
               
-            sessionPromise.then(s => {
-              if (s && isPresentRef.current) {
-                // Use a smaller timeout to ensure the session is ready but greeting is fast
-                setTimeout(() => {
-                  if (s && isPresentRef.current) {
-                    console.log(`Sending proactive greeting prompt (${signal}) to AI...`);
-                    s.sendClientContent({
-                      turns: [{ role: 'user', parts: [{ text: promptText + " Respond immediately." }] }],
-                      turnComplete: true
-                    });
-                  }
-                }, 100);
-              }
-            });
-            
+              sessionPromise.then(s => {
+                if (s && isPresentRef.current) {
+                  setTimeout(() => {
+                    if (s && isPresentRef.current) {
+                      s.sendClientContent({
+                        turns: historyTurns,
+                        turnComplete: true
+                      });
+                      // Also send a small prompt to acknowledge the return
+                      s.sendRealtimeInput({ text: "The user has switched back to voice mode. Please acknowledge their last message or wait for them to speak." });
+                    }
+                  }, 100);
+                }
+              });
+            } else {
+              const signal = isReturn ? 'RETURN_PRESENCE' : 'NEW_PRESENCE';
+              const promptText = isReturn 
+                ? `[SIGNAL: ${signal}] The user has returned. Please greet them back warmly.` 
+                : `[SIGNAL: ${signal}] A new user has arrived. Please introduce yourself and welcome them as the ${project.title} assistant.`;
+                
+              sessionPromise.then(s => {
+                if (s && isPresentRef.current) {
+                  // Use a smaller timeout to ensure the session is ready but greeting is fast
+                  setTimeout(() => {
+                    if (s && isPresentRef.current) {
+                      console.log(`Sending proactive greeting prompt (${signal}) to AI...`);
+                      s.sendClientContent({
+                        turns: [{ role: 'user', parts: [{ text: promptText + " Respond immediately." }] }],
+                        turnComplete: true
+                      });
+                    }
+                  }, 100);
+                }
+              });
+            }
+
             sessionPromise.then(s => {
               console.log("Gemini Live session resolved:", s);
               if (s && isPresentRef.current) {
@@ -1835,6 +2054,26 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     isReconnectingRef.current = false;
   };
 
+  useEffect(() => {
+    if (showSummary) {
+      console.log("Summary shown, stopping audio and ending session...");
+      stopAudioPlayback();
+      if (liveSessionRef.current) {
+        liveSessionRef.current.close();
+        liveSessionRef.current = null;
+      }
+      setIsListening(false);
+    }
+  }, [showSummary]);
+
+  // Handle mode switching session continuity
+  useEffect(() => {
+    if (isVoiceMode && isPresent && !liveSessionRef.current && !isConnectingRef.current && messages.length > 0) {
+      console.log("Switching back to voice mode, resuming session with history...");
+      connectLive(documents, true, messages);
+    }
+  }, [isVoiceMode, isPresent]);
+
   const handleSend = async (text: string) => {
     if (!text.trim() || !session) return;
     if (billingAccessState === 'blocked') {
@@ -1911,135 +2150,152 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   };
 
   return (
-    <AnimatePresence mode="wait">
-      {!isPresent ? (
-        <motion.div 
-          key="waiting"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="h-screen w-full bg-black flex flex-col items-center justify-center text-white p-6 md:p-8 overflow-hidden relative"
-        >
-          <video ref={videoRef} autoPlay muted className="absolute inset-0 w-full h-full object-cover opacity-20 grayscale" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
-          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="z-10 text-center w-full max-w-md">
-            <div className="relative mb-8 md:mb-12 flex justify-center">
-              <div className="w-24 h-24 md:w-32 md:h-32 bg-blue-600/20 rounded-full blur-2xl absolute inset-0 animate-pulse" />
-              <div className="w-24 h-24 md:w-32 md:h-32 border-2 border-white/10 rounded-full flex items-center justify-center relative backdrop-blur-sm">
-                <Camera className="w-10 h-10 md:w-12 md:h-12 text-white/40" />
-              </div>
-            </div>
-            <h1 className="text-4xl md:text-5xl font-light tracking-tighter mb-4">VoiceIt</h1>
-            <div className="h-20 flex flex-col items-center justify-center">
-              {connectionStatus === 'idle' && (
-                <p className="text-lg md:text-xl text-white/60 font-light max-w-xs md:max-w-md mx-auto leading-tight">Waiting for presence...</p>
-              )}
-              {connectionStatus === 'connecting' && (
-                <div className="flex flex-col items-center gap-4">
-                  <p className="text-lg md:text-xl text-blue-400 font-light animate-pulse">Establishing secure connection...</p>
-                  <div className="flex gap-1">
-                    <motion.div animate={{ opacity: [0.2, 1, 0.2] }} transition={{ repeat: Infinity, duration: 1 }} className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
-                    <motion.div animate={{ opacity: [0.2, 1, 0.2] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
-                    <motion.div animate={{ opacity: [0.2, 1, 0.2] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
-                  </div>
-                </div>
-              )}
-              {connectionStatus === 'error' && (
-                <div className="flex flex-col items-center gap-2">
-                  <p className="text-lg md:text-xl text-red-400 font-light">Connection failed</p>
-                  <p className="text-xs md:text-sm text-white/40">Please check your API key or network.</p>
-                </div>
-              )}
-            </div>
-            <button 
-              onClick={startSession} 
-              disabled={connectionStatus === 'connecting'}
-              className={`mt-8 w-full sm:w-auto px-8 py-4 md:py-3 rounded-full text-sm font-medium transition-all ${
-                connectionStatus === 'connecting' 
-                  ? 'bg-white/5 text-white/20 cursor-not-allowed' 
-                  : 'bg-white/10 hover:bg-white/20 border border-white/10 text-white active:scale-95'
-              }`}
+    <div className="app-container">
+      <div className={`device-frame bg-dots ${isPresent ? 'is-voice' : ''}`}>
+        <AnimatePresence mode="wait">
+          {!isPresent ? (
+            <motion.div 
+              key="waiting"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="h-full w-full flex flex-col items-center justify-center text-white p-8 overflow-hidden relative"
             >
-              {connectionStatus === 'connecting' ? 'Connecting...' : 'Enter Interaction Zone'}
-            </button>
-          </motion.div>
-        </motion.div>
-      ) : isVoiceMode ? (
+              <video ref={videoRef} autoPlay muted className="absolute inset-0 w-full h-full object-cover opacity-10 grayscale brightness-50" />
+              <div className="absolute inset-0 bg-gradient-to-t from-app-bg via-app-bg/60 to-transparent" />
+              
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                className="z-10 text-center w-full max-w-md flex flex-col items-center"
+              >
+                <div className="relative mb-12 flex justify-center items-center">
+                  <div className="w-32 h-32 bg-app-accent/20 rounded-full blur-3xl absolute inset-0 animate-orb-pulse" />
+                  <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-72 w-auto relative z-10" referrerPolicy="no-referrer" />
+                </div>
+                
+                <p className="text-app-muted text-sm uppercase tracking-[0.3em] font-medium mb-12">AI Assistant</p>
+                
+                <div className="h-24 flex flex-col items-center justify-center mb-8">
+                  {connectionStatus === 'idle' && (
+                    <p className="text-lg text-white/60 font-light max-w-xs mx-auto leading-tight animate-pulse">Waiting for presence...</p>
+                  )}
+                  {connectionStatus === 'connecting' && (
+                    <div className="flex flex-col items-center gap-4">
+                      <p className="text-lg text-app-accent font-medium tracking-tight">Establishing secure link...</p>
+                      <div className="flex gap-1.5">
+                        <motion.div animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.2, 0.8] }} transition={{ repeat: Infinity, duration: 1.5 }} className="w-2 h-2 bg-app-accent rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
+                        <motion.div animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.2, 0.8] }} transition={{ repeat: Infinity, duration: 1.5, delay: 0.2 }} className="w-2 h-2 bg-app-accent rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
+                        <motion.div animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.2, 0.8] }} transition={{ repeat: Infinity, duration: 1.5, delay: 0.4 }} className="w-2 h-2 bg-app-accent rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
+                      </div>
+                    </div>
+                  )}
+                  {connectionStatus === 'error' && (
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="w-12 h-12 rounded-full bg-app-danger/10 flex items-center justify-center mb-2">
+                        <AlertCircle className="w-6 h-6 text-app-danger" />
+                      </div>
+                      <p className="text-lg text-app-danger font-medium">Connection failed</p>
+                      <p className="text-xs text-app-muted">Please check your configuration.</p>
+                    </div>
+                  )}
+                </div>
+                
+                <button 
+                  onClick={startSession} 
+                  disabled={connectionStatus === 'connecting'}
+                  className={`group relative mt-4 w-full px-8 py-4 rounded-2xl text-sm font-bold transition-all overflow-hidden ${
+                    connectionStatus === 'connecting' 
+                      ? 'bg-white/5 text-white/20 cursor-not-allowed' 
+                      : 'bg-app-accent text-white shadow-[0_0_30px_rgba(59,130,246,0.3)] hover:shadow-[0_0_40px_rgba(59,130,246,0.5)] active:scale-[0.98]'
+                  }`}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                  <span className="relative flex items-center justify-center gap-2">
+                    {connectionStatus === 'connecting' ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Connecting...
+                      </>
+                    ) : (
+                      <>
+                        Enter Interaction Zone
+                        <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                      </>
+                    )}
+                  </span>
+                </button>
+              </motion.div>
+              
+              <div className="absolute bottom-12 left-0 w-full flex justify-center px-8">
+                <div className="flex items-center gap-6 text-[10px] font-bold uppercase tracking-[0.2em] text-app-muted">
+                  <div className="flex items-center gap-2">
+                    <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                    System Online
+                  </div>
+                  <div className="w-1 h-1 rounded-full bg-white/10" />
+                  <div>v2.4.0-Premium</div>
+                </div>
+              </div>
+            </motion.div>
+          ) : isVoiceMode ? (
         <motion.div 
           key="voice"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="h-screen w-full bg-[#050505] text-white flex flex-col items-center justify-center p-6 md:p-12 overflow-hidden relative"
+          className="min-h-screen w-full bg-bloom text-white flex flex-col items-center overflow-y-auto relative pb-32"
         >
+        {/* Ambient Glows */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] md:w-[1000px] h-[600px] md:h-[1000px] bg-blue-600/5 rounded-full blur-[100px] md:blur-[160px]" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1000px] md:w-[1400px] h-[1000px] md:h-[1400px] bg-app-accent/15 rounded-full blur-[150px] md:blur-[220px]" />
+          <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-app-accent/10 to-transparent" />
         </div>
-        <div className="absolute top-6 left-6 md:top-12 md:left-12 flex items-center gap-3 md:gap-4 z-20">
-          <div className="w-10 h-10 md:w-12 md:h-12 bg-white/5 border border-white/10 rounded-xl md:rounded-2xl flex items-center justify-center">
-            <Volume2 className="w-5 h-5 md:w-6 md:h-6 text-blue-400" />
+
+        {/* Top Bar */}
+        <div className="w-full flex justify-between items-center z-20 px-8 py-8">
+          <div className="flex items-center gap-4">
+            <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-24 w-auto" referrerPolicy="no-referrer" />
           </div>
-          <div>
-            <h2 className="text-lg md:text-xl font-medium tracking-tight">VoiceIt</h2>
-            <div className="flex items-center gap-2">
-              <p className="text-[8px] md:text-xs text-white/40 uppercase tracking-widest">Active</p>
-              <span className="w-1 h-1 bg-white/20 rounded-full" />
-              <p className="text-[8px] md:text-[10px] text-blue-400/60 uppercase tracking-widest font-bold">
-                {documents.length} Docs
-              </p>
+
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2 px-5 py-2 bg-surface-container/50 backdrop-blur-xl rounded-full text-xs font-bold tracking-wider text-on-surface/70">
+              <div className="w-2 h-2 bg-primary-container rounded-full animate-pulse shadow-[0_0_10px_rgba(90,162,255,0.5)]" />
+              {remainingTimeFormatted}
             </div>
+            <button 
+              onClick={() => setShowSettings(true)}
+              className="p-2 text-on-surface/40 hover:text-on-surface transition-colors"
+            >
+              <Settings className="w-6 h-6" />
+            </button>
           </div>
         </div>
-        <div className="absolute top-6 right-6 md:top-12 md:right-12 flex flex-col sm:flex-row items-end sm:items-center gap-2 md:gap-4 z-20">
-          {isSpeaking && (
-            <button 
-              onClick={stopAudioPlayback}
-              className="px-4 md:px-6 py-2 md:py-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-full text-[10px] md:text-sm font-medium text-red-400 transition-all flex items-center gap-2"
-            >
-              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-              Interrupt
-            </button>
-          )}
-          <button 
-            onClick={handleExit}
-            className="px-4 md:px-6 py-2 md:py-3 bg-white/5 hover:bg-red-500/10 border border-white/10 rounded-full text-[10px] md:text-sm font-medium text-white/60 hover:text-red-400 transition-all"
+
+        {/* Upper Status Pill */}
+        {messages[messages.length - 1]?.sources && messages[messages.length - 1]?.sources!.length > 0 && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="z-20 mt-2"
           >
-            Exit
-          </button>
-          <button onClick={() => { setIsVoiceMode(false); setIsListening(false); setIsSpeaking(false); setIsThinking(false); }} className="px-4 md:px-6 py-2 md:py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] md:text-sm font-medium transition-all">Text Mode</button>
-        </div>
-        <div className="z-10 flex flex-col items-center gap-8 md:gap-12 w-full max-w-2xl">
-          {billingAccessState !== 'ok' && (
-            <motion.div 
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={`w-full p-4 rounded-2xl border flex items-center gap-3 backdrop-blur-xl ${
-                billingAccessState === 'blocked' 
-                  ? 'bg-red-500/10 border-red-500/20 text-red-400' 
-                  : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-              }`}
-            >
-              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-              <div className="text-xs md:text-sm">
-                <p className="font-bold">
-                  {billingAccessState === 'blocked' ? 'AI Features Suspended' : 'Billing Notice'}
-                </p>
-                <p className="opacity-80">
-                  {billingAccessState === 'blocked' 
-                    ? 'AI access is temporarily disabled for this account. Please contact an administrator.' 
-                    : 'This account is approaching its usage limit. Please review billing settings.'}
-                </p>
-              </div>
-            </motion.div>
-          )}
-          <div className="relative">
+            <div className="px-5 py-2 bg-surface-container/40 backdrop-blur-xl rounded-full flex items-center gap-3 text-[10px] font-sans font-black uppercase tracking-[0.2em] text-primary-container">
+              <Layers className="w-3.5 h-3.5" />
+              SOURCE 1 OF {messages[messages.length - 1]?.sources!.length}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Main Content - Orb Centered */}
+        <div className="z-10 flex flex-col items-center flex-1 justify-center w-full max-w-xl px-8">
+          <div className="relative mb-8">
             <VoiceOrb 
               isSpeaking={isSpeaking} 
+              isListening={isListening}
               isThinking={isThinking} 
               isShowingSourcePending={isShowingSourcePending}
               onClick={isSpeaking ? stopAudioPlayback : undefined} 
             />
-            {/* Hidden video element for frame capture */}
             <video 
               ref={videoRef} 
               autoPlay 
@@ -2048,50 +2304,135 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
               className="absolute inset-0 w-full h-full opacity-0 pointer-events-none"
             />
           </div>
-          <div className="text-center w-full min-h-[100px] md:min-h-[120px] flex flex-col justify-center px-4">
-            <AnimatePresence>
-              {isSpeaking && (
-                <motion.div key="speaking" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="space-y-6">
-                  <p className="text-xl md:text-3xl font-light leading-snug">
-                    {messages[messages.length - 1]?.content}
-                  </p>
-                  {messages[messages.length - 1]?.sources && messages[messages.length - 1]?.sources!.length > 0 && (
-                    <div className="flex flex-wrap justify-center gap-2">
-                      {messages[messages.length - 1]?.sources!.map((src, i) => (
-                        <button 
-                          key={i} 
-                          onClick={() => setSelectedSource(src)} 
-                          className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl text-[10px] md:text-xs transition-all hover:scale-105 active:scale-95"
-                        >
-                          <BookOpen className="w-3 h-3 text-blue-400" />
-                          {src.documentTitle}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </motion.div>
-              )}
-              {isThinking && !isSpeaking && (
-                <motion.p key="thinking" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-lg md:text-2xl font-light text-white/40 italic">Consulting knowledge base...</motion.p>
-              )}
-              {!isSpeaking && !isThinking && isListening && (
-                <motion.div key="listening-status" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-                  <p className="text-lg md:text-2xl font-light text-white/60">I'm listening...</p>
-                  <div className="flex justify-center gap-1">
-                    {[1, 2, 3, 4, 5].map(i => (
-                      <motion.div key={i} animate={{ height: [8, 24, 8] }} transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.1 }} className="w-1 bg-blue-500 rounded-full" />
-                    ))}
-                  </div>
-                </motion.div>
-              )}
+
+          <div className="text-center w-full mb-16">
+            <AnimatePresence mode="wait">
+              <motion.div 
+                key={isListening ? "listening" : isThinking ? "thinking" : isSpeaking ? "speaking" : "idle"}
+                initial={{ opacity: 0, y: 10 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                exit={{ opacity: 0, y: -10 }} 
+                className="space-y-3"
+              >
+                <h3 className="text-4xl md:text-6xl font-sans font-black tracking-tighter text-on-surface">
+                  {isListening ? (
+                    <motion.span 
+                      animate={{ 
+                        opacity: [0.4, 1, 0.4],
+                        scale: [0.98, 1, 0.98],
+                        textShadow: ["0 0 0px rgba(255,255,255,0)", "0 0 10px rgba(255,255,255,0.3)", "0 0 0px rgba(255,255,255,0)"]
+                      }} 
+                      transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+                    >
+                      Listening<motion.span animate={{ opacity: [0, 1, 0] }} transition={{ repeat: Infinity, duration: 1.5, times: [0, 0.3, 1] }}>.</motion.span>
+                      <motion.span animate={{ opacity: [0, 1, 0] }} transition={{ repeat: Infinity, duration: 1.5, delay: 0.3, times: [0, 0.3, 1] }}>.</motion.span>
+                      <motion.span animate={{ opacity: [0, 1, 0] }} transition={{ repeat: Infinity, duration: 1.5, delay: 0.6, times: [0, 0.3, 1] }}>.</motion.span>
+                    </motion.span>
+                  ) : isThinking ? "Analyzing..." : isSpeaking ? "Speaking..." : "Ready."}
+                </h3>
+                <p className="text-[10px] md:text-xs font-sans font-black uppercase tracking-[0.4em] text-on-surface/20">
+                  {isListening ? "ENVIRONMENTAL NOISE SUPPRESSED" : "AWAITING YOUR VOICE"}
+                </p>
+              </motion.div>
             </AnimatePresence>
           </div>
+
+          {/* Assistant Response Card - Intentional Asymmetry */}
+          <AnimatePresence>
+            {(isSpeaking || isThinking || isListening) && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 20, scale: 0.95 }}
+                className="w-full p-8 bg-surface-container/40 backdrop-blur-3xl rounded-tr-[48px] rounded-bl-[48px] rounded-tl-2xl rounded-br-2xl shadow-2xl relative overflow-hidden group"
+              >
+                <div className="absolute top-0 left-0 w-1.5 h-full bg-primary-container/30" />
+                <div className="flex gap-6">
+                  <div className="w-12 h-12 rounded-2xl bg-surface-highest flex items-center justify-center">
+                    <Activity className="w-6 h-6 text-primary-container" />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <p className="text-[10px] font-sans font-black uppercase tracking-[0.2em] text-on-surface/30">Assistant</p>
+                    <p className="text-base md:text-lg leading-relaxed text-on-surface/90 font-medium">
+                      {shortAIText}
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-        <div className="absolute bottom-8 md:bottom-12 left-0 right-0 flex justify-center gap-4 md:gap-8 text-white/30">
-          <div className="flex items-center gap-2 text-[8px] md:text-[10px] uppercase tracking-[0.2em]"><Mic className="w-3 h-3 md:w-4 md:h-4" /> Mic Active</div>
-          <div className="flex items-center gap-2 text-[8px] md:text-[10px] uppercase tracking-[0.2em]"><Activity className="w-3 h-3 md:w-4 md:h-4" /> Sync</div>
+
+        {/* Bottom Action Bar - Fixed to bottom */}
+        <div className="fixed bottom-0 left-0 w-full px-8 py-10 z-[100] bg-gradient-to-t from-surface via-surface/90 to-transparent backdrop-blur-sm">
+          <div className="max-w-md mx-auto flex items-center justify-between">
+            {/* Transcript */}
+            <div className="flex flex-col items-center gap-3">
+              <button 
+                onClick={() => setIsVoiceMode(false)}
+                className="p-4 bg-surface-container/50 rounded-2xl text-on-surface/40 hover:text-on-surface transition-all hover:bg-surface-highest"
+              >
+                <FileText className="w-6 h-6" />
+              </button>
+              <span className="text-[9px] font-sans font-black uppercase tracking-widest text-on-surface/20">Transcript</span>
+            </div>
+
+            {/* Mute */}
+            <div className="flex flex-col items-center gap-3">
+              <button 
+                onClick={() => setIsMuted(!isMuted)}
+                className={`p-4 rounded-2xl transition-all ${isMuted ? 'bg-app-danger/10 text-app-danger' : 'bg-surface-container/50 text-on-surface/40 hover:text-on-surface hover:bg-surface-highest'}`}
+              >
+                {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+              </button>
+              <span className="text-[9px] font-sans font-black uppercase tracking-widest text-on-surface/20">{isMuted ? 'Muted' : 'Mute'}</span>
+            </div>
+
+            {/* End Session */}
+            <div className="flex flex-col items-center gap-3 -mt-10">
+              <button 
+                onClick={() => setShowSummary(true)}
+                className="w-20 h-20 rounded-full bg-gradient-to-br from-app-danger to-red-700 flex items-center justify-center text-white shadow-[0_10px_30px_rgba(239,68,68,0.4)] hover:scale-110 active:scale-95 transition-all"
+              >
+                <PhoneOff className="w-8 h-8" />
+              </button>
+              <span className="text-[9px] font-sans font-black uppercase tracking-widest text-app-danger mt-1">End Session</span>
+            </div>
+
+            {/* Sources */}
+            <div className="flex flex-col items-center gap-3">
+              <button 
+                onClick={() => {
+                  if (selectedSource) {
+                    clearSourceFlow();
+                  } else {
+                    const lastMsgWithSources = [...messages].reverse().find(m => m.sources && m.sources.length > 0);
+                    if (lastMsgWithSources && lastMsgWithSources.sources) {
+                      openSource(lastMsgWithSources.sources[0], lastMsgWithSources.sources);
+                    }
+                  }
+                }}
+                className={`p-4 rounded-2xl transition-all relative ${selectedSource ? 'bg-primary/20 text-primary-container' : 'bg-surface-container/50 text-on-surface/40 hover:text-on-surface hover:bg-surface-highest'}`}
+              >
+                <Database className="w-6 h-6" />
+                {selectedSource && <div className="absolute top-3 right-3 w-2.5 h-2.5 bg-primary-container rounded-full border-2 border-surface" />}
+              </button>
+              <span className="text-[9px] font-sans font-black uppercase tracking-widest text-on-surface/20">Sources</span>
+            </div>
+
+            {/* Text Mode */}
+            <div className="flex flex-col items-center gap-3">
+              <button 
+                onClick={() => setIsVoiceMode(false)}
+                className="p-4 bg-surface-container/50 rounded-2xl text-on-surface/40 hover:text-on-surface transition-all hover:bg-surface-highest"
+              >
+                <MessageSquare className="w-6 h-6" />
+              </button>
+              <span className="text-[9px] font-sans font-black uppercase tracking-widest text-on-surface/20">Text Mode</span>
+            </div>
+          </div>
         </div>
-        
+
         <input type="text" className="opacity-0 absolute" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') { handleSend((e.target as HTMLInputElement).value); (e.target as HTMLInputElement).value = ''; } }} />
         
         <AnimatePresence>
@@ -2102,78 +2443,85 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
               exit={{ opacity: 0, scale: 0.9 }} 
               className="fixed inset-0 z-[110] flex items-center justify-center p-4 md:p-8 bg-black/80 backdrop-blur-md"
             >
-              <div className="bg-[#0a0a0a] w-full max-w-2xl rounded-3xl border border-white/10 shadow-2xl flex flex-col max-h-[90vh]">
-                <div className="p-4 md:p-6 border-b border-white/10 flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <FileText className="w-5 h-5 text-blue-400" />
+              <div className="bg-surface-low/95 backdrop-blur-3xl w-full max-w-2xl rounded-[40px] border border-outline-variant shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+                <div className="p-6 border-b border-outline-variant flex justify-between items-center bg-surface-container/30">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center">
+                      <FileText className="w-6 h-6 text-primary-container" />
+                    </div>
                     <div className="flex flex-col">
-                      <h3 className="font-medium truncate max-w-[200px] md:max-w-md leading-tight">{selectedSource.documentTitle}</h3>
+                      <h3 className="font-sans font-extrabold text-on-surface truncate max-w-[150px] md:max-w-[200px] leading-tight tracking-tight">{selectedSource.documentTitle}</h3>
                       {activePreviewSources.length > 1 && (
-                        <span className="text-[10px] text-white/40 uppercase tracking-widest mt-0.5">
+                        <span className="text-[10px] text-primary-container font-sans font-black uppercase tracking-[0.2em] mt-1">
                           Source {activePreviewIndex + 1} of {activePreviewSources.length}
                         </span>
                       )}
                     </div>
                   </div>
-                  <button onClick={() => clearSourceFlow()} className="p-2 text-white/40 hover:text-white transition-colors">
+                  <button 
+                    onClick={() => clearSourceFlow()} 
+                    className="px-5 py-2.5 bg-surface-highest/50 rounded-2xl text-[10px] font-sans font-black uppercase tracking-widest text-on-surface/40 hover:text-on-surface transition-all"
+                  >
                     Close
                   </button>
                 </div>
-                <div className="flex-1 p-4 md:p-8 overflow-y-auto relative group">
+                <div className="flex-1 p-6 md:p-10 overflow-y-auto relative group bg-dots">
                   {activePreviewSources.length > 1 && (
                     <>
                       <button 
                         onClick={() => setActivePreviewIndex(prev => Math.max(0, prev - 1))}
                         disabled={activePreviewIndex === 0}
-                        className={`absolute left-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-white/5 border border-white/10 transition-all ${activePreviewIndex === 0 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:scale-110 active:scale-95'}`}
+                        className={`absolute left-4 top-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full glass-panel flex items-center justify-center transition-all ${activePreviewIndex === 0 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:scale-110 active:scale-95 shadow-[0_0_20px_rgba(0,0,0,0.3)]'}`}
                       >
-                        <ChevronLeft className="w-6 h-6" />
+                        <ChevronLeft className="w-6 h-6 text-white" />
                       </button>
                       <button 
                         onClick={() => setActivePreviewIndex(prev => Math.min(activePreviewSources.length - 1, prev + 1))}
                         disabled={activePreviewIndex === activePreviewSources.length - 1}
-                        className={`absolute right-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-white/5 border border-white/10 transition-all ${activePreviewIndex === activePreviewSources.length - 1 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:scale-110 active:scale-95'}`}
+                        className={`absolute right-4 top-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full glass-panel flex items-center justify-center transition-all ${activePreviewIndex === activePreviewSources.length - 1 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:scale-110 active:scale-95 shadow-[0_0_20px_rgba(0,0,0,0.3)]'}`}
                       >
-                        <ChevronRight className="w-6 h-6" />
+                        <ChevronRight className="w-6 h-6 text-white" />
                       </button>
                     </>
                   )}
-                  <div className="aspect-[3/4] bg-white/5 rounded-xl border border-white/10 p-6 md:p-12 relative overflow-hidden">
-                    <div className="absolute top-4 right-4 text-[8px] md:text-[10px] uppercase tracking-widest text-white/20">Page {selectedSource.pageNumber}</div>
-                    <div className="space-y-4">
-                      <div className="h-3 md:h-4 w-3/4 bg-white/10 rounded" />
-                      <div className="h-3 md:h-4 w-full bg-white/10 rounded" />
-                      <div className="h-3 md:h-4 w-5/6 bg-white/10 rounded" />
-                      <div className="py-4 md:py-8 px-4 md:px-6 bg-blue-500/10 border-l-4 border-blue-500 text-blue-100 italic font-serif text-lg md:text-xl leading-relaxed">
+                  <div className="aspect-[3/4] glass-panel rounded-[40px] p-8 md:p-14 relative overflow-hidden shadow-2xl border-white/5">
+                    <div className="absolute -top-24 -right-24 w-64 h-64 bg-app-accent/5 rounded-full blur-3xl" />
+                    <div className="absolute top-6 right-8 text-[10px] font-bold uppercase tracking-[0.3em] text-app-accent">Page {selectedSource.pageNumber}</div>
+                    <div className="space-y-6 relative z-10 text-left">
+                      <div className="h-4 w-3/4 bg-white/5 rounded-full" />
+                      <div className="h-4 w-full bg-white/5 rounded-full" />
+                      <div className="h-4 w-5/6 bg-white/5 rounded-full" />
+                      <div className="py-10 px-8 bg-app-accent/5 border-l-2 border-app-accent rounded-r-[32px] text-white/90 italic font-serif text-xl md:text-2xl leading-relaxed shadow-inner">
+                        <p className="not-italic text-[10px] font-bold uppercase tracking-[0.3em] text-app-accent mb-4 opacity-70">Verified Excerpt</p>
                         "{selectedSource.excerpt}"
                       </div>
-                      <div className="h-3 md:h-4 w-full bg-white/10 rounded" />
-                      <div className="h-3 md:h-4 w-2/3 bg-white/10 rounded" />
+                      <div className="h-4 w-full bg-white/5 rounded-full" />
+                      <div className="h-4 w-2/3 bg-white/5 rounded-full" />
                     </div>
                   </div>
                 </div>
-                <div className="p-4 md:p-6 border-t border-white/10 flex justify-center gap-4">
+                <div className="p-6 border-t border-white/10 flex justify-center gap-4 bg-white/5">
                   {activePreviewSources.length > 1 && (
                     <div className="flex gap-2 mr-auto">
                       <button 
                         onClick={() => setActivePreviewIndex(prev => Math.max(0, prev - 1))}
                         disabled={activePreviewIndex === 0}
-                        className={`px-4 py-2 rounded-full border border-white/10 text-xs font-medium transition-all ${activePreviewIndex === 0 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/5'}`}
+                        className={`px-5 py-3 rounded-2xl glass-panel text-[10px] font-bold uppercase tracking-[0.2em] transition-all ${activePreviewIndex === 0 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:text-app-accent'}`}
                       >
                         Previous
                       </button>
                       <button 
                         onClick={() => setActivePreviewIndex(prev => Math.min(activePreviewSources.length - 1, prev + 1))}
                         disabled={activePreviewIndex === activePreviewSources.length - 1}
-                        className={`px-4 py-2 rounded-full border border-white/10 text-xs font-medium transition-all ${activePreviewIndex === activePreviewSources.length - 1 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/5'}`}
+                        className={`px-5 py-3 rounded-2xl glass-panel text-[10px] font-bold uppercase tracking-[0.2em] transition-all ${activePreviewIndex === activePreviewSources.length - 1 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:text-app-accent'}`}
                       >
                         Next
                       </button>
                     </div>
                   )}
                   <button 
-                    onClick={() => clearSourceFlow()}
-                    className="px-8 py-3 bg-blue-600 hover:bg-blue-500 rounded-full text-sm font-medium transition-all"
+                    onClick={() => clearSourceFlow()} 
+                    className="px-12 py-4 bg-app-accent hover:brightness-110 rounded-2xl text-sm font-bold transition-all shadow-[0_0_30px_rgba(59,130,246,0.3)] active:scale-95"
                   >
                     Got it
                   </button>
@@ -2184,15 +2532,21 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         </AnimatePresence>
 
         {remainingSeconds !== null && (
-          <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[150] pointer-events-none">
-            <div className={`px-4 py-2 rounded-2xl backdrop-blur-xl border-2 shadow-2xl flex items-center gap-3 transition-all duration-500 pointer-events-auto ${remainingSeconds < 10 ? 'bg-red-500/30 border-red-500 text-red-200 animate-pulse scale-110' : 'bg-white/10 border-white/20 text-white/80'}`}>
+          <div className="fixed bottom-4 right-4 md:bottom-8 md:right-8 z-[150] pointer-events-none">
+            <div className={`px-6 py-3 rounded-[24px] backdrop-blur-2xl border-2 shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-4 transition-all duration-500 pointer-events-auto ${
+              remainingSeconds < 10 
+                ? 'bg-app-danger/30 border-app-danger text-white animate-pulse scale-110' 
+                : 'bg-white/5 border-white/10 text-white/90'
+            }`}>
               <div className="relative">
-                <Clock className={`w-4 h-4 ${remainingSeconds < 10 ? 'animate-spin-slow' : ''}`} />
-                {remainingSeconds < 10 && <div className="absolute inset-0 bg-red-500 blur-sm animate-pulse rounded-full" />}
+                <Clock className={`w-5 h-5 ${remainingSeconds < 10 ? 'animate-spin-slow text-app-danger' : 'text-app-accent'}`} />
+                {remainingSeconds < 10 && <div className="absolute inset-0 bg-app-danger blur-md animate-pulse rounded-full" />}
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-widest opacity-50 font-bold">Session Time</span>
-                <span className="text-sm font-mono font-bold leading-none">{Math.floor(remainingSeconds / 60)}:{(remainingSeconds % 60).toString().padStart(2, '0')}</span>
+                <span className="text-[9px] uppercase tracking-[0.3em] opacity-50 font-bold">Session Time</span>
+                <span className="text-lg font-mono font-bold leading-none tracking-tighter">
+                  {Math.floor(remainingSeconds / 60)}:{(remainingSeconds % 60).toString().padStart(2, '0')}
+                </span>
               </div>
             </div>
           </div>
@@ -2204,119 +2558,229 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
             onClose={handleReset} 
           />
         )}
-        </motion.div>
-      ) : (
-        <motion.div
-          key="text"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="h-screen w-full bg-[#050505] text-white flex flex-col font-sans overflow-hidden"
-        >
-      <header className="p-4 md:p-6 border-b border-white/10 flex justify-between items-center backdrop-blur-md bg-black/40 z-20">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 md:w-10 md:h-10 bg-blue-600 rounded-lg flex items-center justify-center"><Volume2 className="w-5 h-5 md:w-6 md:h-6" /></div>
-          <div>
-            <h2 className="text-base md:text-lg font-medium leading-none">VoiceIt</h2>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-[8px] md:text-[10px] uppercase tracking-widest text-white/40 truncate max-w-[80px] md:max-w-none">{project.title}</span>
-              <span className="w-1 h-1 bg-white/10 rounded-full" />
-              <span className="text-[8px] md:text-[9px] text-blue-400/60 uppercase tracking-widest font-bold">{documents.length} Docs</span>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 md:gap-4">
-          <button 
-            onClick={handleExit}
-            className="hidden sm:block px-3 md:px-4 py-1.5 md:py-2 bg-white/5 hover:bg-red-500/10 border border-white/10 rounded-full text-[10px] md:text-xs font-medium text-white/60 hover:text-red-400 transition-all"
-          >
-            Exit
-          </button>
-          <button onClick={() => setIsVoiceMode(true)} className="px-3 md:px-4 py-1.5 md:py-2 bg-white/10 rounded-full text-[10px] md:text-xs font-medium hover:bg-white/20 transition-colors">Voice</button>
-        </div>
-      </header>
-      <main className="flex-1 flex overflow-hidden relative">
-        <div className={`flex-1 flex flex-col transition-all duration-500 ${selectedSource ? 'hidden md:flex md:w-1/2' : 'w-full'}`}>
-          {billingAccessState !== 'ok' && (
-            <div className={`p-3 md:p-4 border-b flex items-center gap-3 ${
-              billingAccessState === 'blocked' 
-                ? 'bg-red-500/10 border-red-500/20 text-red-400' 
-                : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-            }`}>
-              <AlertTriangle className="w-4 h-4 md:w-5 md:h-5 flex-shrink-0" />
-              <div className="text-[10px] md:text-xs">
-                <p className="font-bold">
-                  {billingAccessState === 'blocked' ? 'AI Features Suspended' : 'Billing Notice'}
-                </p>
-                <p className="opacity-80">
-                  {billingAccessState === 'blocked' 
-                    ? 'AI access is temporarily disabled for this account. Please contact an administrator.' 
-                    : 'This account is approaching its usage limit. Please review billing settings.'}
-                </p>
-              </div>
-            </div>
-          )}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 md:space-y-8 scroll-smooth">
-            <AnimatePresence mode="popLayout">
-              {messages.map((msg) => (
-                <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[90%] md:max-w-[85%] ${msg.role === 'user' ? 'bg-blue-600' : 'bg-white/5 border border-white/10'} p-4 md:p-5 rounded-2xl shadow-xl`}>
-                    <p className="text-base md:text-lg leading-relaxed font-light">{msg.content}</p>
-                    {msg.sources && msg.sources.length > 0 && (
-                      <div className="mt-3 md:mt-4 pt-3 md:pt-4 border-t border-white/10 flex flex-wrap gap-2">
-                        {msg.sources.map((src, i) => (
-                          <button key={i} onClick={() => setSelectedSource(src)} className="flex items-center gap-2 px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-[10px] md:text-xs transition-colors"><BookOpen className="w-3 h-3" />{src.documentTitle}</button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              ))}
-              {isThinking && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-                  <div className="bg-white/5 border border-white/10 p-4 rounded-2xl flex gap-1">
-                    <span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" />
-                    <span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce [animation-delay:0.2s]" />
-                    <span className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce [animation-delay:0.4s]" />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-          <div className="p-4 md:p-6 bg-black/40 backdrop-blur-xl border-t border-white/10">
-            <div className="max-w-3xl mx-auto flex items-center gap-3 md:gap-4">
-              <button 
-                onClick={() => billingAccessState !== 'blocked' && setIsListening(!isListening)} 
-                disabled={billingAccessState === 'blocked'}
-                className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
-                  billingAccessState === 'blocked' 
-                    ? 'bg-white/5 cursor-not-allowed opacity-50' 
-                    : isListening ? 'bg-red-500 animate-pulse' : 'bg-white/10 hover:bg-white/20'
-                }`}
+
+        <AnimatePresence>
+          {showSettings && (
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            >
+              <motion.div 
+                initial={{ scale: 0.9, y: 20 }} 
+                animate={{ scale: 1, y: 0 }} 
+                exit={{ scale: 0.9, y: 20 }} 
+                className="bg-surface-low w-full max-w-md rounded-[32px] border border-outline-variant shadow-2xl overflow-hidden"
               >
-                <Mic className="w-5 h-5 md:w-6 md:h-6" />
-              </button>
-              <div className="flex-1 relative">
-                <input 
-                  type="text" 
-                  value={input} 
-                  onChange={(e) => setInput(e.target.value)} 
-                  onKeyDown={(e) => e.key === 'Enter' && handleSend(input)} 
-                  placeholder={billingAccessState === 'blocked' ? "Account suspended - contact support" : isListening ? "Listening..." : "Ask..."} 
-                  disabled={billingAccessState === 'blocked'}
-                  className="w-full bg-white/5 border border-white/10 rounded-full py-3 md:py-4 px-5 md:px-6 focus:outline-none focus:border-blue-500/50 transition-colors text-base md:text-lg font-light disabled:opacity-50 disabled:cursor-not-allowed" 
-                />
-                <button 
-                  onClick={() => handleSend(input)} 
-                  disabled={billingAccessState === 'blocked'}
-                  className={`absolute right-1.5 top-1.5 w-9 h-9 md:w-10 md:h-10 bg-blue-600 rounded-full flex items-center justify-center hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                  <Send className="w-4 h-4 md:w-5 md:h-5" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+                <div className="p-6 border-b border-outline-variant flex justify-between items-center">
+                  <h3 className="text-xl font-bold text-on-surface">Interface Settings</h3>
+                  <button onClick={() => setShowSettings(false)} className="p-2 text-on-surface/40 hover:text-on-surface">
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+                <div className="p-8 space-y-6">
+                  <div className="space-y-4">
+                    <p className="text-xs font-bold uppercase tracking-widest text-app-muted">Session Info</p>
+                    <div className="bg-white/5 p-4 rounded-2xl space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-on-surface/40">Project</span>
+                        <span className="text-on-surface font-medium">{project.title}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-on-surface/40">Session ID</span>
+                        <span className="text-on-surface font-mono text-xs">{session?.substring(0, 12)}...</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-on-surface/40">Mode</span>
+                        <span className="text-app-accent font-bold uppercase tracking-tighter">{isVoiceMode ? 'Voice' : 'Text'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <p className="text-xs font-bold uppercase tracking-widest text-app-muted">Controls</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <button 
+                        onClick={() => { setIsMuted(!isMuted); setShowSettings(false); }}
+                        className={`p-4 rounded-2xl border transition-all flex flex-col items-center gap-2 ${isMuted ? 'bg-app-danger/10 border-app-danger/30 text-app-danger' : 'bg-white/5 border-white/10 text-on-surface/60'}`}
+                      >
+                        {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                        <span className="text-[10px] font-bold uppercase tracking-widest">{isMuted ? 'Unmute' : 'Mute'}</span>
+                      </button>
+                      <button 
+                        onClick={() => { setIsVoiceMode(!isVoiceMode); setShowSettings(false); }}
+                        className="p-4 rounded-2xl border border-white/10 bg-white/5 text-on-surface/60 transition-all flex flex-col items-center gap-2"
+                      >
+                        {isVoiceMode ? <MessageSquare className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                        <span className="text-[10px] font-bold uppercase tracking-widest">Switch Mode</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={() => { setShowSettings(false); setShowSummary(true); }}
+                    className="w-full py-4 bg-app-danger/10 hover:bg-app-danger/20 border border-app-danger/30 rounded-2xl text-app-danger text-sm font-bold transition-all flex items-center justify-center gap-2"
+                  >
+                    <PhoneOff className="w-4 h-4" />
+                    End Session
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    ) : (
+      <motion.div
+        key="text"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="h-full w-full bg-app-bg text-white flex flex-col font-sans overflow-hidden relative"
+            >
+              {/* Header */}
+              <header className="p-6 border-b border-white/5 flex justify-between items-center glass-panel z-20">
+                <div className="flex items-center gap-3">
+                  <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-24 w-auto" referrerPolicy="no-referrer" />
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] uppercase tracking-widest text-app-muted truncate max-w-[120px] font-bold">{project.title}</span>
+                      <span className="w-1 h-1 bg-white/10 rounded-full" />
+                      <span className="text-[9px] text-app-accent uppercase tracking-widest font-bold">{documents.length} Docs</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => setShowSettings(true)}
+                    className="p-2 text-on-surface/40 hover:text-on-surface transition-colors mr-2"
+                  >
+                    <Settings className="w-5 h-5" />
+                  </button>
+                  <button 
+                    onClick={() => setIsVoiceMode(true)} 
+                    className="px-5 py-2.5 bg-app-accent/10 hover:bg-app-accent/20 border border-app-accent/30 rounded-full text-xs font-bold text-app-accent transition-all flex items-center gap-2"
+                  >
+                    <Mic className="w-4 h-4" />
+                    Voice
+                  </button>
+                </div>
+              </header>
+
+              <main className="flex-1 flex overflow-hidden relative">
+                <div className={`flex-1 flex flex-col transition-all duration-500 ${selectedSource ? 'hidden md:flex md:w-1/2' : 'w-full'}`}>
+                  {billingAccessState !== 'ok' && (
+                    <div className={`p-4 border-b flex items-center gap-3 backdrop-blur-md ${
+                      billingAccessState === 'blocked' 
+                        ? 'bg-app-danger/10 border-app-danger/20 text-app-danger' 
+                        : 'bg-app-warning/10 border-app-warning/20 text-app-warning'
+                    }`}>
+                      <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                      <div className="text-xs">
+                        <p className="font-bold uppercase tracking-widest">
+                          {billingAccessState === 'blocked' ? 'AI Features Suspended' : 'Billing Notice'}
+                        </p>
+                        <p className="opacity-80 mt-0.5">
+                          {billingAccessState === 'blocked' 
+                            ? 'AI access is temporarily disabled. Please contact admin.' 
+                            : 'Account approaching usage limit. Review settings.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-8 scroll-smooth pb-32 bg-dots">
+                    <AnimatePresence mode="popLayout">
+                      {messages.map((msg) => (
+                        <motion.div 
+                          key={msg.id} 
+                          initial={{ opacity: 0, y: 20, scale: 0.95 }} 
+                          animate={{ opacity: 1, y: 0, scale: 1 }} 
+                          className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                        >
+                          <div className={`max-w-[85%] relative group ${
+                            msg.role === 'user' 
+                              ? 'bg-app-accent text-white rounded-[24px] rounded-tr-none shadow-[0_10px_30px_rgba(59,130,246,0.2)]' 
+                              : 'glass-panel p-5 rounded-[24px] rounded-tl-none border-white/5 shadow-xl'
+                          } p-5`}>
+                            <p className="text-base leading-relaxed font-medium">{msg.content}</p>
+                            
+                            {msg.sources && msg.sources.length > 0 && (
+                              <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap gap-2">
+                                {msg.sources.map((src, i) => (
+                                  <button 
+                                    key={i} 
+                                    onClick={() => setSelectedSource(src)} 
+                                    className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all"
+                                  >
+                                    <BookOpen className="w-3.5 h-3.5 text-app-accent" />
+                                    <span className="max-w-[120px] truncate">{src.documentTitle}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            
+                            <span className="absolute -bottom-5 left-0 text-[8px] uppercase tracking-widest text-app-muted font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </motion.div>
+                      ))}
+                      
+                      {isThinking && (
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
+                          <div className="glass-panel p-4 rounded-[20px] rounded-tl-none flex gap-1.5">
+                            <motion.span animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1 }} className="w-2 h-2 bg-app-accent rounded-full" />
+                            <motion.span animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-2 h-2 bg-app-accent rounded-full" />
+                            <motion.span animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-2 h-2 bg-app-accent rounded-full" />
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {/* Input Area */}
+                  <div className="absolute bottom-0 left-0 right-0 p-6 z-20 flex justify-center">
+                    <div className="glass-panel rounded-[32px] p-2 flex items-center gap-3 shadow-[0_-20px_50px_rgba(0,0,0,0.3)] w-full max-w-4xl">
+                      <button 
+                        onClick={() => billingAccessState !== 'blocked' && setIsListening(!isListening)} 
+                        disabled={billingAccessState === 'blocked'}
+                        className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all flex-shrink-0 ${
+                          billingAccessState === 'blocked' 
+                            ? 'bg-white/5 cursor-not-allowed opacity-50' 
+                            : isListening ? 'bg-app-danger animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.4)]' : 'bg-white/5 hover:bg-white/10 text-app-muted hover:text-white'
+                        }`}
+                      >
+                        <Mic className="w-6 h-6" />
+                      </button>
+                      
+                      <div className="flex-1 relative">
+                        <input 
+                          type="text" 
+                          value={input} 
+                          onChange={(e) => setInput(e.target.value)} 
+                          onKeyDown={(e) => e.key === 'Enter' && handleSend(input)} 
+                          placeholder={billingAccessState === 'blocked' ? "Account suspended" : isListening ? "Listening..." : "Ask anything..."} 
+                          disabled={billingAccessState === 'blocked'}
+                          className="w-full bg-transparent border-none py-4 px-4 focus:outline-none text-base font-medium placeholder:text-app-muted" 
+                        />
+                      </div>
+
+                      <button 
+                        onClick={() => handleSend(input)} 
+                        disabled={billingAccessState === 'blocked' || !input.trim()}
+                        className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
+                          billingAccessState === 'blocked' || !input.trim()
+                            ? 'bg-white/5 text-white/10 cursor-not-allowed'
+                            : 'bg-app-accent text-white shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:scale-105 active:scale-95'
+                        }`}
+                      >
+                        <Send className="w-6 h-6" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
         
         <AnimatePresence>
           {selectedSource && (
@@ -2324,65 +2788,79 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
               initial={{ x: '100%' }} 
               animate={{ x: 0 }} 
               exit={{ x: '100%' }} 
-              className="fixed inset-0 md:relative md:inset-auto md:w-1/2 border-l border-white/10 bg-[#0a0a0a] flex flex-col z-30"
+              className="fixed inset-0 md:relative md:inset-auto md:w-1/2 border-l border-white/10 bg-app-bg/95 backdrop-blur-3xl flex flex-col z-30"
             >
-              <div className="p-4 md:p-6 border-b border-white/10 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <FileText className="w-5 h-5 text-blue-400" />
+              <div className="p-4 md:p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 glass-panel rounded-xl flex items-center justify-center text-app-accent shadow-[0_0_20px_rgba(59,130,246,0.2)]">
+                    <FileText className="w-5 h-5" />
+                  </div>
                   <div className="flex flex-col">
-                    <h3 className="font-medium truncate max-w-[150px] md:max-w-[200px] leading-tight">{selectedSource.documentTitle}</h3>
+                    <h3 className="font-bold text-white truncate max-w-[150px] md:max-w-[200px] leading-tight tracking-tight">{selectedSource.documentTitle}</h3>
                     {activePreviewSources.length > 1 && (
-                      <span className="text-[10px] text-white/40 uppercase tracking-widest mt-0.5">
+                      <span className="text-[10px] text-app-accent font-bold uppercase tracking-[0.2em] mt-1">
                         Source {activePreviewIndex + 1} of {activePreviewSources.length}
                       </span>
                     )}
                   </div>
                 </div>
-                <button onClick={() => clearSourceFlow()} className="p-2 text-white/40 hover:text-white">Close</button>
+                <button 
+                  onClick={() => clearSourceFlow()} 
+                  className="px-4 py-2 glass-panel rounded-xl text-[10px] font-bold uppercase tracking-widest text-app-muted hover:text-white hover:border-white/20 transition-all"
+                >
+                  Close
+                </button>
               </div>
-              <div className="flex-1 p-4 md:p-8 overflow-y-auto relative group">
+              <div className="flex-1 p-4 md:p-8 overflow-y-auto relative group bg-dots">
                 {activePreviewSources.length > 1 && (
                   <>
                     <button 
                       onClick={() => setActivePreviewIndex(prev => Math.max(0, prev - 1))}
                       disabled={activePreviewIndex === 0}
-                      className={`absolute left-4 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-white/5 border border-white/10 transition-all ${activePreviewIndex === 0 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:scale-110 active:scale-95'}`}
+                      className={`absolute left-4 top-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full glass-panel flex items-center justify-center transition-all ${activePreviewIndex === 0 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:scale-110 active:scale-95 shadow-[0_0_20px_rgba(0,0,0,0.3)]'}`}
                     >
-                      <ChevronLeft className="w-5 h-5" />
+                      <ChevronLeft className="w-6 h-6 text-white" />
                     </button>
                     <button 
                       onClick={() => setActivePreviewIndex(prev => Math.min(activePreviewSources.length - 1, prev + 1))}
                       disabled={activePreviewIndex === activePreviewSources.length - 1}
-                      className={`absolute right-4 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-white/5 border border-white/10 transition-all ${activePreviewIndex === activePreviewSources.length - 1 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:scale-110 active:scale-95'}`}
+                      className={`absolute right-4 top-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full glass-panel flex items-center justify-center transition-all ${activePreviewIndex === activePreviewSources.length - 1 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:scale-110 active:scale-95 shadow-[0_0_20px_rgba(0,0,0,0.3)]'}`}
                     >
-                      <ChevronRight className="w-5 h-5" />
+                      <ChevronRight className="w-6 h-6 text-white" />
                     </button>
                   </>
                 )}
-                <div className="aspect-[3/4] bg-white/5 rounded-xl border border-white/10 p-6 md:p-12 relative overflow-hidden">
-                  <div className="absolute top-4 right-4 text-[8px] md:text-[10px] uppercase tracking-widest text-white/20">Page {selectedSource.pageNumber}</div>
-                  <div className="space-y-4">
-                    <div className="h-3 md:h-4 w-3/4 bg-white/10 rounded" /><div className="h-3 md:h-4 w-full bg-white/10 rounded" /><div className="h-3 md:h-4 w-5/6 bg-white/10 rounded" />
-                    <div className="py-4 md:py-8 px-4 md:px-6 bg-blue-500/10 border-l-4 border-blue-500 text-blue-100 italic font-serif text-lg md:text-xl leading-relaxed">"{selectedSource.excerpt}"</div>
-                    <div className="h-3 md:h-4 w-full bg-white/10 rounded" /><div className="h-3 md:h-4 w-2/3 bg-white/10 rounded" />
+                <div className="aspect-[3/4] glass-panel rounded-[40px] p-8 md:p-14 relative overflow-hidden shadow-2xl border-white/5">
+                  <div className="absolute -top-24 -right-24 w-64 h-64 bg-app-accent/5 rounded-full blur-3xl" />
+                  <div className="absolute top-6 right-8 text-[10px] font-bold uppercase tracking-[0.3em] text-app-accent">Page {selectedSource.pageNumber}</div>
+                  <div className="space-y-6 relative z-10">
+                    <div className="h-4 w-3/4 bg-white/5 rounded-full" />
+                    <div className="h-4 w-full bg-white/5 rounded-full" />
+                    <div className="h-4 w-5/6 bg-white/5 rounded-full" />
+                    <div className="py-10 px-8 bg-app-accent/5 border-l-2 border-app-accent rounded-r-[32px] text-white/90 italic font-serif text-xl md:text-2xl leading-relaxed shadow-inner">
+                      <p className="not-italic text-[10px] font-bold uppercase tracking-[0.3em] text-app-accent mb-4 opacity-70">Verified Excerpt</p>
+                      "{selectedSource.excerpt}"
+                    </div>
+                    <div className="h-4 w-full bg-white/5 rounded-full" />
+                    <div className="h-4 w-2/3 bg-white/5 rounded-full" />
                   </div>
                 </div>
               </div>
               {activePreviewSources.length > 1 && (
-                <div className="p-4 border-t border-white/10 flex justify-center gap-4">
+                <div className="p-6 border-t border-white/10 flex justify-center gap-4 bg-white/5">
                   <button 
                     onClick={() => setActivePreviewIndex(prev => Math.max(0, prev - 1))}
                     disabled={activePreviewIndex === 0}
-                    className={`flex-1 py-2 rounded-full border border-white/10 text-xs font-medium transition-all ${activePreviewIndex === 0 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/5'}`}
+                    className={`flex-1 py-4 rounded-2xl glass-panel text-[10px] font-bold uppercase tracking-[0.2em] transition-all ${activePreviewIndex === 0 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:text-app-accent'}`}
                   >
-                    Previous
+                    Previous Source
                   </button>
                   <button 
                     onClick={() => setActivePreviewIndex(prev => Math.min(activePreviewSources.length - 1, prev + 1))}
                     disabled={activePreviewIndex === activePreviewSources.length - 1}
-                    className={`flex-1 py-2 rounded-full border border-white/10 text-xs font-medium transition-all ${activePreviewIndex === activePreviewSources.length - 1 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/5'}`}
+                    className={`flex-1 py-4 rounded-2xl glass-panel text-[10px] font-bold uppercase tracking-[0.2em] transition-all ${activePreviewIndex === activePreviewSources.length - 1 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:text-app-accent'}`}
                   >
-                    Next
+                    Next Source
                   </button>
                 </div>
               )}
@@ -2391,15 +2869,21 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         </AnimatePresence>
 
         {remainingSeconds !== null && (
-          <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[150] pointer-events-none">
-            <div className={`px-4 py-2 rounded-2xl backdrop-blur-xl border-2 shadow-2xl flex items-center gap-3 transition-all duration-500 pointer-events-auto ${remainingSeconds < 10 ? 'bg-red-500/30 border-red-500 text-red-200 animate-pulse scale-110' : 'bg-white/10 border-white/20 text-white/80'}`}>
+          <div className="fixed bottom-4 right-4 md:bottom-8 md:right-8 z-[150] pointer-events-none">
+            <div className={`px-6 py-3 rounded-[24px] backdrop-blur-2xl border-2 shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-4 transition-all duration-500 pointer-events-auto ${
+              remainingSeconds < 10 
+                ? 'bg-app-danger/30 border-app-danger text-white animate-pulse scale-110' 
+                : 'bg-white/5 border-white/10 text-white/90'
+            }`}>
               <div className="relative">
-                <Clock className={`w-4 h-4 ${remainingSeconds < 10 ? 'animate-spin-slow' : ''}`} />
-                {remainingSeconds < 10 && <div className="absolute inset-0 bg-red-500 blur-sm animate-pulse rounded-full" />}
+                <Clock className={`w-5 h-5 ${remainingSeconds < 10 ? 'animate-spin-slow text-app-danger' : 'text-app-accent'}`} />
+                {remainingSeconds < 10 && <div className="absolute inset-0 bg-app-danger blur-md animate-pulse rounded-full" />}
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-widest opacity-50 font-bold">Session Time</span>
-                <span className="text-sm font-mono font-bold leading-none">{Math.floor(remainingSeconds / 60)}:{(remainingSeconds % 60).toString().padStart(2, '0')}</span>
+                <span className="text-[9px] uppercase tracking-[0.3em] opacity-50 font-bold">Session Time</span>
+                <span className="text-lg font-mono font-bold leading-none tracking-tighter">
+                  {Math.floor(remainingSeconds / 60)}:{(remainingSeconds % 60).toString().padStart(2, '0')}
+                </span>
               </div>
             </div>
           </div>
@@ -2413,8 +2897,11 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         )}
       </main>
     </motion.div>
-    )}
+    )
+  }
   </AnimatePresence>
+  </div>
+  </div>
   );
 };
 
@@ -2441,7 +2928,7 @@ const AccountDashboard = ({ account, projects, analytics }: { account: Account, 
           { label: 'Active Kiosks', value: accountProjects.length, icon: Settings },
           { label: 'Response Rate', value: '98.2%', icon: CheckCircle2 },
         ].map((stat, i) => (
-          <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <div key={i} className="bg-surface-low p-6 rounded-2xl border border-white/5 shadow-sm">
             <div className="flex justify-between items-start mb-4">
               <div className="p-2 bg-slate-50 rounded-lg text-slate-400">
                 <stat.icon className="w-5 h-5" />
@@ -2454,7 +2941,7 @@ const AccountDashboard = ({ account, projects, analytics }: { account: Account, 
       </div>
 
       {/* User Location Map */}
-      <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-surface-low p-6 md:p-8 rounded-3xl border border-white/5 shadow-sm overflow-hidden">
         <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-6 flex items-center gap-2">
           <Activity className="w-4 h-4" />
           User Location Map
@@ -2481,7 +2968,7 @@ const AccountDashboard = ({ account, projects, analytics }: { account: Account, 
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Countries Table */}
-        <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm">
+        <div className="bg-surface-low p-6 md:p-8 rounded-3xl border border-white/5 shadow-sm">
           <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Top 5 Countries</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -2549,10 +3036,10 @@ const AccountDashboard = ({ account, projects, analytics }: { account: Account, 
           <h3 className="text-xl font-bold text-slate-900">Account Projects</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {accountProjects.map(proj => (
-              <div key={proj.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-                <h4 className="font-bold text-slate-900 mb-2">{proj.title}</h4>
-                <p className="text-sm text-slate-500 line-clamp-2 mb-4">{proj.description}</p>
-                <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+              <div key={proj.id} className="bg-surface-low p-6 rounded-2xl border border-white/5 shadow-sm hover:shadow-md transition-shadow">
+                <h4 className="font-bold text-white mb-2">{proj.title}</h4>
+                <p className="text-sm text-slate-400 line-clamp-2 mb-4">{proj.description}</p>
+                <div className="flex justify-between items-center pt-4 border-t border-white/5">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active</span>
                   <div className="flex gap-2">
                     <button className="text-indigo-600 font-bold text-xs hover:underline">Manage</button>
@@ -2563,7 +3050,7 @@ const AccountDashboard = ({ account, projects, analytics }: { account: Account, 
           </div>
         </div>
         
-        <div className="bg-slate-900 rounded-3xl p-8 text-white">
+        <div className="bg-surface-low rounded-3xl p-8 text-white">
           <h3 className="text-xl font-bold mb-6">Account Sentiment</h3>
           <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -2648,9 +3135,9 @@ const UsersView = ({ users, accounts, onRefresh, onImpersonate }: { users: UserT
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="bg-surface-low rounded-2xl border border-white/5 overflow-hidden">
         <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
+          <thead className="bg-white/5 border-b border-white/5 text-slate-400 uppercase text-[10px] font-bold tracking-wider">
             <tr>
               <th className="px-6 py-4">Name</th>
               <th className="px-6 py-4">Email</th>
@@ -2697,8 +3184,8 @@ const UsersView = ({ users, accounts, onRefresh, onImpersonate }: { users: UserT
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
+        <div className="fixed inset-0 bg-surface-low/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-surface-low border border-white/10 rounded-3xl p-8 max-w-md w-full shadow-2xl">
             <h3 className="text-2xl font-bold mb-6">{editingUser ? 'Edit User' : 'Add New User'}</h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
@@ -3584,22 +4071,22 @@ const ProjectLogsView = ({ project, onBack }: { project: Project, onBack: () => 
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="divide-y divide-slate-100">
+      <div className="bg-surface-low rounded-2xl border border-white/5 overflow-hidden">
+        <div className="divide-y divide-white/5">
           {loading ? (
             <div className="p-12 text-center text-slate-400">Loading logs...</div>
           ) : sessions.length === 0 ? (
             <div className="p-12 text-center text-slate-400">No messages found matching filters.</div>
           ) : (
             sessions.map(session => (
-              <div key={session.sessionId} className="p-6 space-y-6 bg-white">
+              <div key={session.sessionId} className="p-6 space-y-6 bg-surface-low">
                 <div className="flex items-center justify-between border-b border-slate-50 pb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
                       <Hash className="w-4 h-4" />
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-slate-900">Session {session.sessionId}</h4>
+                      <h4 className="text-sm font-bold text-white">Session {session.sessionId}</h4>
                       <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
                         Started {new Date(session.messages[0].session_start || session.messages[0].created_at).toLocaleString()}
                       </p>
@@ -4074,7 +4561,7 @@ const AdminDashboard = ({
 
   if (isInitialLoading || !effectiveUser) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-8 w-full">
+      <div className="min-h-screen bg-bloom bg-dots flex items-center justify-center p-8 w-full">
         <div className="text-center space-y-4">
           <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-slate-500 font-bold text-xs uppercase tracking-widest">Initializing Platform...</p>
@@ -4084,7 +4571,7 @@ const AdminDashboard = ({
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] text-slate-900 flex flex-col md:flex-row font-sans relative">
+    <div className="h-screen bg-bloom bg-dots text-white flex flex-col md:flex-row font-sans relative overflow-hidden">
       {/* Impersonation Banner */}
       {impersonatedUser && (
         <div className="fixed top-0 left-0 right-0 z-[100] bg-amber-500 text-white px-4 py-2 flex items-center justify-between shadow-lg">
@@ -4102,15 +4589,12 @@ const AdminDashboard = ({
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 flex flex-col transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${showMobileMenu ? 'translate-x-0' : '-translate-x-full'} ${impersonatedUser ? 'pt-10' : ''}`}>
-        <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-surface-low/80 backdrop-blur-2xl border-r border-white/5 flex flex-col transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${showMobileMenu ? 'translate-x-0' : '-translate-x-full'} ${impersonatedUser ? 'pt-10' : ''}`}>
+        <div className="p-6 border-b border-white/5 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-indigo-600 rounded flex items-center justify-center text-white">
-              <Volume2 className="w-5 h-5" />
-            </div>
-            <h1 className="font-bold text-xl tracking-tight">VoiceIt</h1>
+            <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-24 w-auto" referrerPolicy="no-referrer" />
           </div>
-          <button onClick={() => setShowMobileMenu(false)} className="md:hidden p-2 text-slate-400 hover:text-slate-600">
+          <button onClick={() => setShowMobileMenu(false)} className="md:hidden p-2 text-slate-400 hover:text-slate-200">
             <LogOut className="w-5 h-5 rotate-180" />
           </button>
         </div>
@@ -4127,51 +4611,46 @@ const AdminDashboard = ({
             <button
               key={item.id}
               onClick={() => { setActiveTab(item.id); setManagingProject(null); setSelectedAccount(null); setShowMobileMenu(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id && !managingProject && !selectedAccount ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id && !managingProject && !selectedAccount ? 'bg-indigo-600/10 text-indigo-400' : 'text-slate-400 hover:bg-white/5'}`}
             >
               <item.icon className="w-4 h-4" />
               {item.label}
             </button>
           ))}
         </nav>
-        <div className="p-4 border-t border-slate-200">
-          <div className="bg-slate-50 p-4 rounded-xl">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">System Health</p>
+        <div className="p-4 border-t border-white/5">
+          <div className="bg-white/5 p-4 rounded-xl">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">System Health</p>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full animate-pulse ${analytics ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                <span className={`text-sm font-medium ${analytics ? 'text-emerald-600' : 'text-red-600'}`}>
+                <span className={`text-sm font-medium ${analytics ? 'text-emerald-400' : 'text-red-400'}`}>
                   {analytics ? 'Operational' : 'Backend Unreachable'}
                 </span>
               </div>
               {!analytics && (
                 <button 
                   onClick={() => fetchData()} 
-                  className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                  className="p-1 text-slate-400 hover:text-indigo-400 transition-colors"
                   title="Retry connection"
                 >
                   <RefreshCw className="w-3 h-3" />
                 </button>
               )}
             </div>
-            {analytics && !analytics.dbConnected && (
-              <div className="mt-2 text-[10px] text-red-500 font-bold">
-                Database Error: Check server logs
-              </div>
-            )}
           </div>
         </div>
       </aside>
 
       {/* Mobile Header */}
-      <div className="md:hidden bg-white border-b border-slate-200 p-4 flex items-center justify-between sticky top-0 z-40">
+      <div className="md:hidden bg-surface-low border-b border-white/5 p-4 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-indigo-600 rounded flex items-center justify-center text-white">
             <Volume2 className="w-5 h-5" />
           </div>
-          <span className="font-bold text-lg">VoiceIt</span>
+          <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-18 w-auto" referrerPolicy="no-referrer" />
         </div>
-        <button onClick={() => setShowMobileMenu(true)} className="p-2 bg-slate-50 rounded-lg text-slate-600">
+        <button onClick={() => setShowMobileMenu(true)} className="p-2 bg-white/5 rounded-lg text-slate-400">
           <LayoutDashboard className="w-5 h-5" />
         </button>
       </div>
@@ -4179,13 +4658,13 @@ const AdminDashboard = ({
       {/* Overlay */}
       {showMobileMenu && (
         <div 
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden"
+          className="fixed inset-0 bg-surface-low/60 backdrop-blur-sm z-40 md:hidden"
           onClick={() => setShowMobileMenu(false)}
         />
       )}
 
       {/* Main */}
-      <main className="flex-1 p-4 md:p-10 overflow-y-auto">
+      <main className="flex-1 p-4 md:p-10 overflow-y-auto bg-transparent">
         {/* Admin-wide Billing Notifications */}
         {effectiveUser?.role === 'admin' && (warningAccounts.length > 0 || suspendedAccounts.length > 0) && (
           <div className="mb-6 space-y-3">
@@ -4229,10 +4708,10 @@ const AdminDashboard = ({
         )}
         <header className={`flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-8 md:mb-10 ${impersonatedUser ? 'mt-12' : ''}`}>
           <div>
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 capitalize">
+            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-white capitalize">
               {managingProject ? 'Project Management' : selectedAccount ? `Account: ${selectedAccount.name}` : activeTab}
             </h2>
-            <p className="text-slate-500 mt-1 text-sm md:text-base">
+            <p className="text-slate-400 mt-1 text-sm md:text-base">
               {selectedAccount ? 'View account-specific analytics and projects.' : 'Manage your enterprise knowledge and kiosk deployments.'}
             </p>
           </div>
@@ -4261,21 +4740,21 @@ const AdminDashboard = ({
             <div className="flex items-center gap-3 md:gap-4 mb-6 md:mb-8">
               <button 
                 onClick={() => setManagingProject(null)} 
-                className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"
+                className="p-2 hover:bg-white/5 rounded-full transition-colors text-slate-400"
               >
                 <ChevronRight className="w-5 h-5 md:w-6 md:h-6 rotate-180" />
               </button>
               <div className="min-w-0">
-                <h3 className="text-xl md:text-2xl font-bold truncate">{managingProject.title}</h3>
-                <p className="text-slate-500 text-xs md:text-sm truncate">Manage documents and knowledge base for this project.</p>
+                <h3 className="text-xl md:text-2xl font-bold truncate text-white">{managingProject.title}</h3>
+                <p className="text-slate-400 text-xs md:text-sm truncate">Manage documents and knowledge base for this project.</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
               <div className="lg:col-span-2 space-y-6">
-                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-                  <div className="p-4 md:p-6 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <h4 className="font-bold">Documents</h4>
+                <div className="bg-surface-low rounded-2xl border border-white/5 overflow-hidden">
+                  <div className="p-4 md:p-6 border-b border-white/5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <h4 className="font-bold text-white">Documents</h4>
                     <button 
                       onClick={() => setShowUploadModal(true)}
                       className="w-full sm:w-auto px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-sm"
@@ -4283,22 +4762,22 @@ const AdminDashboard = ({
                       Upload Document
                     </button>
                   </div>
-                  <div className="divide-y divide-slate-100">
+                  <div className="divide-y divide-white/5">
                     {projectDocs.map(doc => (
-                      <div key={doc.id} className="p-4 md:p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-slate-50 transition-colors">
+                      <div key={doc.id} className="p-4 md:p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-white/5 transition-colors">
                         <div className="flex items-center gap-4">
-                          <div className="p-3 bg-slate-100 rounded-xl text-slate-400">
+                          <div className="p-3 bg-white/5 rounded-xl text-slate-400">
                             <FileText className="w-5 h-5" />
                           </div>
                           <div>
-                            <p className="font-medium text-sm md:text-base">{doc.title}</p>
-                            <p className="text-[10px] md:text-xs text-slate-400 uppercase tracking-wider">{doc.page_count} Pages • PDF</p>
+                            <p className="font-medium text-sm md:text-base text-white">{doc.title}</p>
+                            <p className="text-[10px] md:text-xs text-slate-500 uppercase tracking-wider">{doc.page_count} Pages • PDF</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
                           <button 
                             onClick={() => setViewingDoc(doc)}
-                            className="text-indigo-600 text-sm font-bold hover:underline"
+                            className="text-indigo-400 text-sm font-bold hover:underline"
                           >
                             View
                           </button>
@@ -4318,23 +4797,21 @@ const AdminDashboard = ({
                     )}
                   </div>
                 </div>
-              </div>
-
-              <div className="space-y-6">
-                <div className="bg-white p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm">
-                  <h4 className="font-bold mb-6">Project Details</h4>
+                          <div className="space-y-6">
+                <div className="bg-surface-low/40 backdrop-blur-xl p-6 md:p-8 rounded-2xl border border-white/5 shadow-sm">
+                  <h4 className="font-bold mb-6 text-white">Project Details</h4>
                   <div className="space-y-4">
                     <div>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Description</p>
-                      <p className="text-sm text-slate-600">{managingProject.description}</p>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Description</p>
+                      <p className="text-sm text-slate-400">{managingProject.description}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">AI Instructions</p>
-                      <p className="text-sm text-slate-600 italic">"{managingProject.instructions}"</p>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">AI Instructions</p>
+                      <p className="text-sm text-slate-400 italic">"{managingProject.instructions}"</p>
                     </div>
                     <button 
                       onClick={() => handleEditProject(managingProject)}
-                      className="w-full mt-4 py-2 border border-slate-200 rounded-lg text-sm font-bold hover:bg-slate-50 transition-colors"
+                      className="w-full mt-4 py-2 border border-white/5 rounded-lg text-sm font-bold hover:bg-white/5 transition-colors text-white"
                     >
                       Edit Project Details
                     </button>
@@ -4343,69 +4820,70 @@ const AdminDashboard = ({
               </div>
             </div>
           </div>
-        ) : selectedAccount ? (
+        </div>
+      ) : selectedAccount ? (
           <div className="space-y-8">
             <div className="flex items-center gap-4 mb-8">
               <button 
                 onClick={() => setSelectedAccount(null)} 
-                className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"
+                className="p-2 hover:bg-white/5 rounded-full transition-colors text-slate-400"
               >
                 <ChevronRight className="w-6 h-6 rotate-180" />
               </button>
               <div>
-                <h3 className="text-2xl font-bold">{selectedAccount.name}</h3>
-                <p className="text-slate-500 text-sm">Account Overview & Scoped Analytics</p>
+                <h3 className="text-2xl font-bold text-white">{selectedAccount.name}</h3>
+                <p className="text-slate-400 text-sm">Account Overview & Scoped Analytics</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Total Sessions</p>
-                <h3 className="text-2xl font-bold text-slate-900">{accountAnalytics?.totalSessions || 0}</h3>
+              <div className="bg-surface-low/40 backdrop-blur-xl p-6 rounded-2xl border border-white/5 shadow-sm">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Sessions</p>
+                <h3 className="text-2xl font-bold text-white">{accountAnalytics?.totalSessions || 0}</h3>
               </div>
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Active Projects</p>
-                <h3 className="text-2xl font-bold text-slate-900">{accountAnalytics?.activeProjects || 0}</h3>
+              <div className="bg-surface-low/40 backdrop-blur-xl p-6 rounded-2xl border border-white/5 shadow-sm">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Active Projects</p>
+                <h3 className="text-2xl font-bold text-white">{accountAnalytics?.activeProjects || 0}</h3>
               </div>
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Avg. Accuracy</p>
-                <h3 className="text-2xl font-bold text-slate-900">{accountAnalytics?.accuracy || 0}%</h3>
+              <div className="bg-surface-low/40 backdrop-blur-xl p-6 rounded-2xl border border-white/5 shadow-sm">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Avg. Accuracy</p>
+                <h3 className="text-2xl font-bold text-white">{accountAnalytics?.accuracy || 0}%</h3>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Sentiment Analysis</h3>
+              <div className="bg-surface-low/40 backdrop-blur-xl p-8 rounded-3xl border border-white/5 shadow-sm">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-6">Sentiment Analysis</h3>
                 <div className="flex items-center justify-around py-4">
                   <div className="text-center">
                     <Smile className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                    <p className="text-2xl font-bold text-slate-900">{accountAnalytics?.sentimentTotals?.positive || 0}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Positive</p>
+                    <p className="text-2xl font-bold text-white">{accountAnalytics?.sentimentTotals?.positive || 0}</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Positive</p>
                   </div>
                   <div className="text-center">
                     <Meh className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-                    <p className="text-2xl font-bold text-slate-900">{accountAnalytics?.sentimentTotals?.neutral || 0}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Neutral</p>
+                    <p className="text-2xl font-bold text-white">{accountAnalytics?.sentimentTotals?.neutral || 0}</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Neutral</p>
                   </div>
                   <div className="text-center">
                     <Frown className="w-8 h-8 text-red-500 mx-auto mb-2" />
-                    <p className="text-2xl font-bold text-slate-900">{accountAnalytics?.sentimentTotals?.negative || 0}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Negative</p>
+                    <p className="text-2xl font-bold text-white">{accountAnalytics?.sentimentTotals?.negative || 0}</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Negative</p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Account Projects</h3>
+              <div className="bg-surface-low p-8 rounded-3xl border border-white/5 shadow-sm">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-6">Account Projects</h3>
                 <div className="space-y-4">
                   {projects.filter(p => p.account_id === selectedAccount.id).map(proj => (
-                    <div key={proj.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-                      <span className="font-bold text-slate-800">{proj.title}</span>
-                      <button onClick={() => handleManageProject(proj)} className="text-indigo-600 text-xs font-bold hover:underline">Manage</button>
+                    <div key={proj.id} className="flex items-center justify-between p-4 bg-white/5 rounded-xl">
+                      <span className="font-bold text-slate-200">{proj.title}</span>
+                      <button onClick={() => handleManageProject(proj)} className="text-indigo-400 text-xs font-bold hover:underline">Manage</button>
                     </div>
                   ))}
                   {projects.filter(p => p.account_id === selectedAccount.id).length === 0 && (
-                    <p className="text-slate-400 italic text-sm">No projects assigned to this account.</p>
+                    <p className="text-slate-500 italic text-sm">No projects assigned to this account.</p>
                   )}
                 </div>
               </div>
@@ -4438,28 +4916,28 @@ const AdminDashboard = ({
                     { label: 'Knowledge Base', value: `${analytics?.totalDocuments || 0} docs`, change: `${analytics?.totalMessages || 0} msgs`, icon: BookOpen },
                     { label: 'Avg. Accuracy', value: `${analytics?.accuracy || 0}%`, change: '+0.2%', icon: Info },
                   ].map((stat, i) => (
-                    <div key={i} className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm">
+                    <div key={i} className="bg-surface-low p-4 md:p-6 rounded-2xl border border-white/5 shadow-sm">
                       <div className="flex justify-between items-start mb-4">
-                        <div className="p-2 bg-slate-50 rounded-lg text-slate-400">
+                        <div className="p-2 bg-white/5 rounded-lg text-slate-400">
                           <stat.icon className="w-5 h-5" />
                         </div>
-                        <span className={`text-[10px] md:text-xs font-bold px-2 py-1 rounded-full ${stat.change.startsWith('+') ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                        <span className={`text-[10px] md:text-xs font-bold px-2 py-1 rounded-full ${stat.change.startsWith('+') ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/5 text-slate-400'}`}>
                           {stat.change}
                         </span>
                       </div>
                       <p className="text-xs md:text-sm font-medium text-slate-500">{stat.label}</p>
-                      <h3 className="text-xl md:text-2xl font-bold text-slate-900">{stat.value}</h3>
+                      <h3 className="text-xl md:text-2xl font-bold text-white">{stat.value}</h3>
                     </div>
                   ))}
                 </div>
 
                 {/* User Location Map */}
-                <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm mb-10 overflow-hidden">
-                  <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-6 flex items-center gap-2">
+                <div className="bg-surface-low p-6 md:p-8 rounded-3xl border border-white/5 shadow-sm mb-10 overflow-hidden">
+                  <h3 className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider mb-6 flex items-center gap-2">
                     <Activity className="w-4 h-4" />
                     User Location Map
                   </h3>
-                  <div className="h-[400px] w-full rounded-2xl overflow-hidden border border-slate-100">
+                  <div className="h-[400px] w-full rounded-2xl overflow-hidden border border-white/5">
                     <MapContainer center={[20, 0]} zoom={2} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
                       <TileLayer
                         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -4481,23 +4959,23 @@ const AdminDashboard = ({
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
                   {/* Top Countries Table */}
-                  <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm">
-                    <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Top 5 Countries</h3>
+                  <div className="bg-surface-low p-6 md:p-8 rounded-3xl border border-white/5 shadow-sm">
+                    <h3 className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider mb-6">Top 5 Countries</h3>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left">
                         <thead>
-                          <tr className="border-b border-slate-100">
-                            <th className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Rank</th>
-                            <th className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Country</th>
-                            <th className="pb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Count</th>
+                          <tr className="border-b border-white/5">
+                            <th className="pb-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Rank</th>
+                            <th className="pb-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Country</th>
+                            <th className="pb-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Count</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
+                        <tbody className="divide-y divide-white/5">
                           {analytics?.top_countries?.map((c, i) => (
-                            <tr key={i} className="hover:bg-slate-50 transition-colors">
-                              <td className="py-4 text-sm font-bold text-slate-400">#{i + 1}</td>
-                              <td className="py-4 text-sm font-bold text-slate-700">{c.country}</td>
-                              <td className="py-4 text-sm font-bold text-slate-900 text-right">{c.count}</td>
+                            <tr key={i} className="hover:bg-white/5 transition-colors">
+                              <td className="py-4 text-sm font-bold text-slate-500">#{i + 1}</td>
+                              <td className="py-4 text-sm font-bold text-slate-300">{c.country}</td>
+                              <td className="py-4 text-sm font-bold text-white text-right">{c.count}</td>
                             </tr>
                           ))}
                           {(!analytics?.top_countries || analytics.top_countries.length === 0) && (
@@ -4511,7 +4989,7 @@ const AdminDashboard = ({
                   </div>
 
                   {/* Device Breakdown Pie Chart */}
-                  <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm">
+                  <div className="bg-surface-low p-6 md:p-8 rounded-3xl border border-white/5 shadow-sm">
                     <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Device Breakdown</h3>
                     <div className="h-[250px] w-full">
                       <ResponsiveContainer width="100%" height="100%">
@@ -4545,23 +5023,23 @@ const AdminDashboard = ({
                 </div>
 
                 {/* Sentiment Overview */}
-                <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm mb-10">
+                <div className="bg-surface-low p-6 md:p-8 rounded-3xl border border-white/5 shadow-sm mb-10">
                   <h3 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-6">Global Sentiment Analysis</h3>
                   <div className="grid grid-cols-3 gap-4">
-                    <div className="text-center p-4 bg-emerald-50 rounded-2xl">
-                      <Smile className="w-6 h-6 text-emerald-600 mx-auto mb-2" />
-                      <p className="text-xl font-bold text-emerald-900">{analytics?.sentimentTotals?.positive || 0}</p>
-                      <p className="text-[8px] font-bold text-emerald-600 uppercase tracking-widest">Positive</p>
+                    <div className="text-center p-4 bg-emerald-500/10 rounded-2xl">
+                      <Smile className="w-6 h-6 text-emerald-400 mx-auto mb-2" />
+                      <p className="text-xl font-bold text-emerald-400">{analytics?.sentimentTotals?.positive || 0}</p>
+                      <p className="text-[8px] font-bold text-emerald-400 uppercase tracking-widest">Positive</p>
                     </div>
-                    <div className="text-center p-4 bg-amber-50 rounded-2xl">
-                      <Meh className="w-6 h-6 text-amber-600 mx-auto mb-2" />
-                      <p className="text-xl font-bold text-amber-900">{analytics?.sentimentTotals?.neutral || 0}</p>
-                      <p className="text-[8px] font-bold text-amber-600 uppercase tracking-widest">Neutral</p>
+                    <div className="text-center p-4 bg-amber-500/10 rounded-2xl">
+                      <Meh className="w-6 h-6 text-amber-400 mx-auto mb-2" />
+                      <p className="text-xl font-bold text-amber-400">{analytics?.sentimentTotals?.neutral || 0}</p>
+                      <p className="text-[8px] font-bold text-amber-400 uppercase tracking-widest">Neutral</p>
                     </div>
-                    <div className="text-center p-4 bg-red-50 rounded-2xl">
-                      <Frown className="w-6 h-6 text-red-600 mx-auto mb-2" />
-                      <p className="text-xl font-bold text-red-900">{analytics?.sentimentTotals?.negative || 0}</p>
-                      <p className="text-[8px] font-bold text-red-600 uppercase tracking-widest">Negative</p>
+                    <div className="text-center p-4 bg-red-500/10 rounded-2xl">
+                      <Frown className="w-6 h-6 text-red-400 mx-auto mb-2" />
+                      <p className="text-xl font-bold text-red-400">{analytics?.sentimentTotals?.negative || 0}</p>
+                      <p className="text-[8px] font-bold text-red-400 uppercase tracking-widest">Negative</p>
                     </div>
                   </div>
                 </div>
@@ -4573,7 +5051,7 @@ const AdminDashboard = ({
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {projects.map((proj) => (
-                    <div key={proj.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group">
+                    <div key={proj.id} className="bg-surface-low border border-white/5 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group text-white">
                       <div className="h-24 md:h-32 bg-slate-100 relative overflow-hidden">
                         <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-500/20" />
                         <div className="absolute bottom-4 left-4">
@@ -4894,7 +5372,7 @@ const AdminDashboard = ({
                 </div>
 
                 <div className="flex justify-end gap-3 px-2 md:px-0">
-                  <button onClick={() => fetchData()} className="flex-1 sm:flex-none px-6 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-bold">Cancel</button>
+                  <button onClick={() => fetchData()} className="flex-1 sm:flex-none px-6 py-2 bg-white/5 text-slate-400 rounded-lg text-sm font-bold">Cancel</button>
                   <button 
                     onClick={handleSaveSettings}
                     disabled={isSavingSettings}
@@ -4917,12 +5395,12 @@ const AdminDashboard = ({
       {/* Confirm Modal */}
       <AnimatePresence>
         {confirmModal && confirmModal.show && (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4 md:p-6">
+          <div className="fixed inset-0 bg-surface-low/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4 md:p-6">
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
+              className="bg-surface-low border border-white/10 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
             >
               <div className="p-6 md:p-8 border-b border-slate-100">
                 <h3 className="text-xl md:text-2xl font-bold">{confirmModal.title}</h3>
@@ -4950,12 +5428,12 @@ const AdminDashboard = ({
       {/* New Project Modal */}
       <AnimatePresence>
         {showNewProject && (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6">
+          <div className="fixed inset-0 bg-surface-low/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6">
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              className="bg-surface-low border border-white/10 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
               <div className="p-6 md:p-8 border-b border-slate-100">
                 <h3 className="text-xl md:text-2xl font-bold">{editingProject ? 'Edit Project' : 'Create New Project'}</h3>
@@ -4967,7 +5445,7 @@ const AdminDashboard = ({
                   <select 
                     value={newProject.account_id}
                     onChange={e => setNewProject({...newProject, account_id: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 text-sm md:text-base"
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 text-sm md:text-base text-black"
                   >
                     {accounts.map(acc => (
                       <option key={acc.id} value={acc.id}>{acc.name}</option>
@@ -4981,7 +5459,7 @@ const AdminDashboard = ({
                     value={newProject.title}
                     onChange={e => setNewProject({...newProject, title: e.target.value})}
                     placeholder="e.g. Legal & Policy Library" 
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 text-sm md:text-base" 
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 text-sm md:text-base text-black" 
                   />
                 </div>
                 <div>
@@ -4990,7 +5468,7 @@ const AdminDashboard = ({
                     value={newProject.description}
                     onChange={e => setNewProject({...newProject, description: e.target.value})}
                     placeholder="Briefly describe the purpose..." 
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 h-20 md:h-24 resize-none text-sm md:text-base" 
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 h-20 md:h-24 resize-none text-sm md:text-base text-black" 
                   />
                 </div>
                 <div>
@@ -4999,7 +5477,7 @@ const AdminDashboard = ({
                     value={newProject.instructions}
                     onChange={e => setNewProject({...newProject, instructions: e.target.value})}
                     placeholder="How should the AI behave?" 
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 h-24 md:h-32 resize-none text-sm md:text-base" 
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 h-24 md:h-32 resize-none text-sm md:text-base text-black" 
                   />
                 </div>
               </div>
@@ -5025,12 +5503,12 @@ const AdminDashboard = ({
       {/* New Account Modal */}
       <AnimatePresence>
         {showNewAccount && (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6">
+          <div className="fixed inset-0 bg-surface-low/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6">
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              className="bg-surface-low border border-white/10 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
               <div className="p-6 md:p-8 border-b border-slate-100">
                 <h3 className="text-xl md:text-2xl font-bold">{editingAccount ? 'Edit Account' : 'Create New Account'}</h3>
@@ -5044,7 +5522,7 @@ const AdminDashboard = ({
                     value={newAccount.name}
                     onChange={e => setNewAccount({...newAccount, name: e.target.value})}
                     placeholder="e.g. Acme Corp" 
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 text-sm md:text-base" 
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 text-sm md:text-base text-black" 
                   />
                 </div>
                 <div>
@@ -5053,7 +5531,7 @@ const AdminDashboard = ({
                     value={newAccount.branding_json}
                     onChange={e => setNewAccount({...newAccount, branding_json: e.target.value})}
                     placeholder='{"primaryColor": "#4f46e5"}' 
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 h-32 resize-none text-sm md:text-base font-mono" 
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500 h-32 resize-none text-sm md:text-base font-mono text-black" 
                   />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -5225,31 +5703,31 @@ const AdminDashboard = ({
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-white w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+              className="bg-surface-low/80 backdrop-blur-2xl w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-white/10"
             >
-              <div className="p-6 md:p-8 border-b border-slate-100 flex justify-between items-center">
+              <div className="p-6 md:p-8 border-b border-white/5 flex justify-between items-center">
                 <div>
-                  <h3 className="text-lg md:text-2xl font-bold text-slate-900">{viewingDoc.title}</h3>
-                  <p className="text-slate-500 mt-1 text-[10px] md:text-xs uppercase tracking-wider font-bold">{viewingDoc.page_count} Pages • Knowledge Base Document</p>
+                  <h3 className="text-lg md:text-2xl font-bold text-white">{viewingDoc.title}</h3>
+                  <p className="text-slate-400 mt-1 text-[10px] md:text-xs uppercase tracking-wider font-bold">{viewingDoc.page_count} Pages • Knowledge Base Document</p>
                 </div>
                 <button 
                   onClick={() => setViewingDoc(null)}
-                  className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"
+                  className="p-2 hover:bg-white/5 rounded-full transition-colors text-slate-400"
                 >
                   <LogOut className="w-5 h-5 md:w-6 md:h-6 rotate-180" />
                 </button>
               </div>
-              <div className="p-4 md:p-8 overflow-y-auto bg-slate-50 flex-1">
-                <div className="bg-white p-6 md:p-10 rounded-2xl border border-slate-200 shadow-sm min-h-full">
-                  <pre className="whitespace-pre-wrap font-sans text-xs md:text-sm text-slate-700 leading-relaxed">
+              <div className="p-4 md:p-8 overflow-y-auto bg-transparent flex-1">
+                <div className="bg-surface-low/40 backdrop-blur-xl p-6 md:p-10 rounded-2xl border border-white/5 shadow-sm min-h-full">
+                  <pre className="whitespace-pre-wrap font-sans text-xs md:text-sm text-slate-300 leading-relaxed">
                     {viewingDoc.content}
                   </pre>
                 </div>
               </div>
-              <div className="p-4 md:p-6 bg-white border-t border-slate-100 flex justify-end">
+              <div className="p-4 md:p-6 bg-surface-low/60 backdrop-blur-xl border-t border-white/5 flex justify-end">
                 <button 
                   onClick={() => setViewingDoc(null)}
-                  className="w-full sm:w-auto px-8 py-2.5 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors text-xs md:text-sm"
+                  className="w-full sm:w-auto px-8 py-2.5 bg-white/5 text-slate-300 rounded-xl font-bold hover:bg-white/10 transition-colors text-xs md:text-sm"
                 >
                   Close Preview
                 </button>
@@ -5298,52 +5776,69 @@ export default function App() {
 
   if (mode === 'select') {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 md:p-8">
-        <div className="w-full max-w-4xl">
+      <div className="min-h-screen bg-bloom bg-dots flex flex-col items-center justify-center p-4 md:p-8 relative overflow-hidden">
+        {/* Background Ambient Glows */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1000px] h-[1000px] bg-indigo-600/10 rounded-full blur-[120px]" />
+          <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-600/10 rounded-full blur-[100px]" />
+        </div>
+
+        <div className="w-full max-w-4xl relative z-10">
           <div className="text-center mb-8 md:mb-12">
-            <div className="w-12 h-12 md:w-16 md:h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white mx-auto mb-4 md:mb-6 shadow-lg shadow-indigo-200">
-              <Volume2 className="w-6 h-6 md:w-8 md:h-8" />
-            </div>
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-slate-900 mb-2">VoiceIt Rebuild</h1>
-            <p className="text-slate-500 text-sm md:text-base">Select an interface to begin the experience.</p>
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="w-16 h-16 md:w-20 md:h-20 bg-indigo-600 rounded-[2rem] flex items-center justify-center text-white mx-auto mb-6 md:mb-8 shadow-2xl shadow-indigo-500/20"
+            >
+              <Volume2 className="w-8 h-8 md:w-10 md:h-10" />
+            </motion.div>
+            <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-32 md:h-48 w-auto mb-4" referrerPolicy="no-referrer" />
+            <p className="text-slate-300 font-sans font-black uppercase tracking-[0.4em] text-[10px] md:text-xs">Select Interface to Begin</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
-            <button 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10">
+            <motion.button 
+              whileHover={{ y: -8, scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={() => setMode('admin')}
-              className="bg-white p-6 md:p-10 rounded-3xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all text-left group"
+              className="bg-surface-low/50 backdrop-blur-3xl p-8 md:p-12 rounded-[3rem] border border-white/5 shadow-2xl text-left group transition-all"
             >
-              <div className="w-10 h-10 md:w-12 md:h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600 mb-4 md:mb-6 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                <LayoutDashboard className="w-5 h-5 md:w-6 md:h-6" />
+              <div className="w-12 h-12 md:w-14 md:h-14 bg-white/5 rounded-2xl flex items-center justify-center text-slate-400 mb-6 md:mb-8 group-hover:bg-indigo-600 group-hover:text-white transition-all">
+                <LayoutDashboard className="w-6 h-6 md:w-7 md:h-7" />
               </div>
-              <h3 className="text-xl md:text-2xl font-bold mb-2">Admin Console</h3>
-              <p className="text-slate-500 mb-6 md:mb-8 text-sm md:text-base">Manage accounts, projects, and knowledge ingestion.</p>
-              <div className="flex items-center gap-2 text-indigo-600 font-bold text-sm md:text-base">
-                Open Dashboard <ChevronRight className="w-4 h-4" />
+              <h3 className="text-2xl md:text-3xl font-sans font-extrabold mb-3 text-white">Admin Console</h3>
+              <p className="text-slate-400 mb-8 md:mb-10 text-sm md:text-base leading-relaxed">Manage accounts, projects, and knowledge ingestion with advanced analytics.</p>
+              <div className="flex items-center gap-3 text-indigo-400 font-sans font-black uppercase tracking-widest text-xs">
+                Open Dashboard <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
-            </button>
+            </motion.button>
 
-            <div className="bg-white p-6 md:p-10 rounded-3xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all text-left group">
-              <div className="w-10 h-10 md:w-12 md:h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600 mb-4 md:mb-6 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                <Mic className="w-5 h-5 md:w-6 md:h-6" />
+            <motion.div 
+              whileHover={{ y: -8, scale: 1.02 }}
+              className="bg-surface-low/50 backdrop-blur-3xl p-8 md:p-12 rounded-[3rem] border border-white/5 shadow-2xl text-left group transition-all"
+            >
+              <div className="w-12 h-12 md:w-14 md:h-14 bg-white/5 rounded-2xl flex items-center justify-center text-slate-400 mb-6 md:mb-8 group-hover:bg-blue-600 group-hover:text-white transition-all">
+                <Mic className="w-6 h-6 md:w-7 md:h-7" />
               </div>
-              <h3 className="text-xl md:text-2xl font-bold mb-2">Kiosk Mode</h3>
-              <p className="text-slate-500 mb-4 md:mb-6 text-sm md:text-base">Interactive AI assistant for privacy pods and public spaces.</p>
+              <h3 className="text-2xl md:text-3xl font-sans font-extrabold mb-3 text-white">Kiosk Mode</h3>
+              <p className="text-slate-400 mb-6 md:mb-8 text-sm md:text-base leading-relaxed">Interactive AI assistant for privacy pods and public spaces.</p>
               
-              <div className="space-y-2">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Select Project</p>
-                {projects.map(p => (
-                  <button 
-                    key={p.id}
-                    onClick={() => { setSelectedProject(p); setMode('kiosk'); }}
-                    className="w-full p-3 bg-slate-50 hover:bg-blue-50 rounded-xl text-left flex justify-between items-center group/item transition-colors"
-                  >
-                    <span className="font-medium text-slate-700 group-hover/item:text-blue-700 text-sm md:text-base">{p.title}</span>
-                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover/item:text-blue-400" />
-                  </button>
-                ))}
+              <div className="space-y-3">
+                <p className="text-[10px] font-sans font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Select Project</p>
+                <div className="grid grid-cols-1 gap-2">
+                  {projects.map(p => (
+                    <button 
+                      key={p.id}
+                      onClick={() => { setSelectedProject(p); setMode('kiosk'); }}
+                      className="w-full p-4 bg-white/5 hover:bg-blue-600/20 rounded-2xl text-left flex justify-between items-center group/item transition-all border border-transparent hover:border-blue-500/30"
+                    >
+                      <span className="font-bold text-slate-200 group-hover/item:text-blue-400 text-sm md:text-base">{p.title}</span>
+                      <ChevronRight className="w-4 h-4 text-slate-600 group-hover/item:text-blue-400 group-hover/item:translate-x-1 transition-all" />
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            </motion.div>
           </div>
         </div>
       </div>
