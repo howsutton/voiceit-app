@@ -5761,25 +5761,29 @@ export default function App() {
 
   if (mode === 'select') {
     return (
-      <div className="min-h-screen bg-bloom bg-dots flex flex-col items-center justify-center p-4 md:p-8 relative overflow-hidden">
+      <div className="min-h-screen bg-bloom bg-dots flex flex-col items-center p-4 md:p-8 relative overflow-hidden">
         {/* Background Ambient Glows */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1000px] h-[1000px] bg-indigo-600/10 rounded-full blur-[120px]" />
           <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-600/10 rounded-full blur-[100px]" />
         </div>
 
-        <div className="w-full max-w-4xl relative z-10">
-          <div className="text-center mb-8 md:mb-12">
+        <div className="w-full max-w-4xl relative z-10 flex flex-col flex-1">
+          <header className="flex items-center justify-between py-6 md:py-10">
+            <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-32 md:h-48 w-auto" referrerPolicy="no-referrer" />
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="w-16 h-16 md:w-20 md:h-20 bg-indigo-600 rounded-[2rem] flex items-center justify-center text-white mx-auto mb-6 md:mb-8 shadow-2xl shadow-indigo-500/20"
+              className="w-12 h-12 md:w-16 md:h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-2xl shadow-indigo-500/20"
             >
-              <Volume2 className="w-8 h-8 md:w-10 md:h-10" />
+              <Volume2 className="w-6 h-6 md:w-8 md:h-8" />
             </motion.div>
-            <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-32 md:h-48 w-auto mb-4" referrerPolicy="no-referrer" />
-            <p className="text-slate-300 font-sans font-black uppercase tracking-[0.4em] text-[10px] md:text-xs">Select Interface to Begin</p>
-          </div>
+          </header>
+
+          <div className="flex-1 flex flex-col justify-center pb-12 md:pb-20">
+            <div className="text-center mb-8 md:mb-12">
+              <p className="text-slate-300 font-sans font-black uppercase tracking-[0.4em] text-[10px] md:text-xs">Select Interface to Begin</p>
+            </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10">
             <motion.button 
@@ -5827,8 +5831,9 @@ export default function App() {
           </div>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   if (mode === 'admin') return (
     <AdminDashboard 
