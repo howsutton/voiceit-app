@@ -5761,7 +5761,7 @@ export default function App() {
 
   if (mode === 'select') {
     return (
-      <div className="min-h-screen bg-bloom bg-dots flex flex-col items-center p-4 md:p-8 relative overflow-hidden">
+      <div className="min-h-screen bg-bloom bg-dots flex flex-col items-center p-4 md:p-8 relative overflow-y-auto">
         {/* Background Ambient Glows */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1000px] h-[1000px] bg-indigo-600/10 rounded-full blur-[120px]" />
