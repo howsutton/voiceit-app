@@ -577,6 +577,25 @@ const VoiceOrb = ({ isSpeaking, isListening, isThinking, isShowingSourcePending,
 
 const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sessionTimeout: number, onExit: () => void }) => {
   const [isPresent, setIsPresent] = useState(false);
+
+  useEffect(() => {
+    const enterFullscreen = async () => {
+      try {
+        if (document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen();
+        }
+      } catch (err) {
+        console.warn("Fullscreen request failed or denied:", err);
+      }
+    };
+    enterFullscreen();
+    
+    return () => {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(err => console.warn("Exit fullscreen failed:", err));
+      }
+    };
+  }, []);
   const [isVoiceMode, setIsVoiceMode] = useState(true);
   const [session, setSession] = useState<string | null>(null);
   const sessionRef = useRef<string | null>(null);
@@ -2209,6 +2228,17 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
 
   return (
     <div className="app-container">
+      <button 
+        onClick={() => {
+          if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+          }
+          onExit();
+        }}
+        className="fixed bottom-4 right-4 z-[200] text-[10px] font-bold uppercase tracking-widest text-white/30 hover:text-white transition-colors cursor-pointer"
+      >
+        Close Kiosk
+      </button>
       <div className={`device-frame bg-dots ${isPresent ? 'is-voice' : ''}`}>
         <AnimatePresence mode="wait">
           {!isPresent && !showSummary ? (
@@ -2953,6 +2983,13 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
             onClose={handleReset} 
           />
         )}
+        
+        <button
+          onClick={onExit}
+          className="fixed bottom-4 right-4 z-[200] text-white/30 hover:text-white/60 text-[10px] uppercase tracking-widest font-bold transition-all"
+        >
+          Close Kiosk
+        </button>
       </main>
     </motion.div>
     )
