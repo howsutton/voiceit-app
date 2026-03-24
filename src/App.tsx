@@ -574,28 +574,6 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
 
   const [showSettings, setShowSettings] = useState(false);
 
-  useEffect(() => {
-    if (isPresent && !isVoiceMode) {
-      // Switched to text mode
-      stopAudioPlayback();
-      if (liveSessionRef.current) {
-        console.log("Closing live session for text mode...");
-        try {
-          liveSessionRef.current.close();
-        } catch (e) {}
-        liveSessionRef.current = null;
-      }
-      setIsListening(false);
-      setIsThinking(false);
-    } else if (isPresent && isVoiceMode) {
-      // Switched back to voice mode
-      if (!liveSessionRef.current && connectionStatus !== 'connecting') {
-        console.log("Restarting live session for voice mode...");
-        connectLive(documents, true);
-      }
-    }
-  }, [isVoiceMode, isPresent]);
-
   const getDeviceType = useCallback(() => {
     const ua = navigator.userAgent;
     if (/(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(ua)) {
@@ -649,6 +627,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   }, []);
 
   const [showSummary, setShowSummary] = useState(false);
+  const showSummaryRef = useRef(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
@@ -852,10 +831,65 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     }
   }, [project.id]);
 
-  const enterSummaryMode = useCallback(() => {
+  const handleReset = useCallback(() => {
+    console.log("Full UI Reset triggered.");
+    setShowSummary(false);
+    stopAudioPlayback();
+    
+    // Reset billing refs
+    userVoiceStartTimeRef.current = 0;
+    userVoiceDurationRef.current = 0;
+    modelVoiceDurationRef.current = 0;
+    isModelSpeakingRef.current = false;
+
+    if (liveSessionRef.current) {
+      intentionalCloseRef.current = true;
+      try { liveSessionRef.current.close(); } catch (e) {}
+      liveSessionRef.current = null;
+    }
+    
+    // Comprehensive state reset
+    setIsPresent(false);
+    isPresentRef.current = false;
+    lastOfferedSourcesRef.current = [];
+    awaitingSourceConfirmationRef.current = false;
+    setIsShowingSourcePending(false);
+    sourceFlowStateRef.current = 'idle';
+    lastReadConfirmationSourceKeyRef.current = null;
+    lastReadPromptedSourceKeyRef.current = null;
+    setMessages([]);
+    setTranscription('');
+    setInput('');
+    setIsListening(false);
+    setIsThinking(false);
+    setIsSpeaking(false);
+    setConnectionStatus('idle');
+    connectionStatusRef.current = 'idle';
+    lastActivityRef.current = Date.now();
+    hasPromptedRef.current = false;
+    setRemainingSeconds(null);
     clearSourceFlow();
+  }, [clearSourceFlow]);
+
+  const enterSummaryMode = useCallback(() => {
+    console.log("Entering summary mode...");
+    clearSourceFlow();
+    lastActivityRef.current = Date.now(); // Reset activity timer for summary page
+    intentionalCloseRef.current = true;
     setShowSummary(true);
   }, [clearSourceFlow]);
+
+  const handleExit = () => {
+    console.log("Exiting Kiosk mode...");
+    if (liveSessionRef.current) {
+      intentionalCloseRef.current = true;
+      try { liveSessionRef.current.close(); } catch (e) {}
+      liveSessionRef.current = null;
+    }
+    isPresentRef.current = false;
+    setIsPresent(false);
+    onExit();
+  };
 
   // Sync refs with state for use in callbacks
   useEffect(() => {
@@ -873,6 +907,10 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       hasPromptedRef.current = false;
     }
   }, [isPresent]);
+
+  useEffect(() => {
+    showSummaryRef.current = showSummary;
+  }, [showSummary]);
 
   useEffect(() => {
     const fetchDocs = async () => {
@@ -928,6 +966,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
 
   // Handle session lifecycle based on isPresent state
   useEffect(() => {
+    if (showSummary) return;
     if (isPresent && isVoiceMode) {
       // If we are present and in voice mode, ensure session is connected
       if (connectionStatus === 'idle' || connectionStatus === 'error' || (connectionStatus === 'connected' && !liveSessionRef.current)) {
@@ -937,22 +976,31 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         const timeSinceLastSeen = lastSeenTimeRef.current ? (now - lastSeenTimeRef.current) : null;
         const isReturn = timeSinceLastSeen !== null && timeSinceLastSeen < (sessionTimeout * 1000);
         
-        connectLive(documents, isReturn);
+        // If we have messages, it's a return with history
+        const hasHistory = messages.length > 0;
+        connectLive(documents, isReturn || hasHistory, hasHistory ? messages : undefined);
       }
     } else if (isPresent && !isVoiceMode) {
       // If we are present but in text mode, close live session if it exists
       if (liveSessionRef.current) {
         console.log("Session lifecycle: closing live session for text mode");
+        intentionalCloseRef.current = true;
+        stopAudioPlayback();
         liveSessionRef.current.close();
         liveSessionRef.current = null;
       }
       if (connectionStatus !== 'connected') {
         setConnectionStatus('connected');
       }
+      setIsListening(false);
+      setIsThinking(false);
+      setIsSpeaking(false);
     } else if (!isPresent) {
       // If not present, close everything
       if (liveSessionRef.current) {
         console.log("Session lifecycle: closing live session (no presence)");
+        intentionalCloseRef.current = true;
+        stopAudioPlayback();
         liveSessionRef.current.close();
         liveSessionRef.current = null;
       }
@@ -960,8 +1008,11 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       if (isPresentRef.current) {
         lastSeenTimeRef.current = Date.now();
       }
+      setIsListening(false);
+      setIsThinking(false);
+      setIsSpeaking(false);
     }
-  }, [isPresent, isVoiceMode, connectionStatus]);
+  }, [isPresent, isVoiceMode, connectionStatus, messages.length, documents, showSummary]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -981,7 +1032,8 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
 
   // Inactivity Timeout Logic
   useEffect(() => {
-    if (!isPresent) {
+    // If not present AND not showing summary, we don't need the timer
+    if (!isPresent && !showSummary) {
       setRemainingSeconds(null);
       return;
     }
@@ -990,8 +1042,11 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       const now = Date.now();
       const idleTime = now - lastActivityRef.current;
       const totalTimeout = sessionTimeout * 1000;
-      const remaining = Math.max(0, Math.ceil((totalTimeout - idleTime) / 1000));
       
+      // Calculate remaining seconds for UI
+      // If summary is showing, we show a countdown for the summary itself (60s)
+      const displayTimeout = showSummary ? (totalTimeout + 60000) : totalTimeout;
+      const remaining = Math.max(0, Math.ceil((displayTimeout - idleTime) / 1000));
       setRemainingSeconds(remaining);
 
       // Inactivity timeout (prompt)
@@ -1011,12 +1066,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       // Timeout after prompt (or immediately if timeout is reached)
       else if (idleTime > totalTimeout && !showSummary) {
         console.log("Session timed out due to inactivity - showing summary");
-        setShowSummary(true);
-        if (liveSessionRef.current) {
-          intentionalCloseRef.current = true;
-          liveSessionRef.current.close();
-          liveSessionRef.current = null;
-        }
+        enterSummaryMode();
       }
       // If summary is showing, have a secondary timeout to reset completely if no one interacts
       else if (showSummary && idleTime > totalTimeout + 60000) {
@@ -1026,7 +1076,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isPresent, sessionTimeout, showSummary]);
+  }, [isPresent, sessionTimeout, showSummary, handleReset, enterSummaryMode]);
 
   // Presence Detection / Auto-start Loop
   useEffect(() => {
@@ -1079,8 +1129,8 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   }, []);
 
   const startSession = async () => {
-    if (isPresentRef.current || connectionStatusRef.current === 'connecting') {
-      console.log("Session already active or connecting, ignoring start request.");
+    if (isPresentRef.current || connectionStatusRef.current === 'connecting' || showSummary) {
+      console.log("Session already active, connecting, or summary shown, ignoring start request.");
       return;
     }
     
@@ -1162,7 +1212,9 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       
       if (isVoiceMode) {
         // Pass the freshly fetched docs to connectLive
-        connectLive(currentDocs, isReturn);
+        // If we have messages, it's a return with history
+        const hasHistory = messages.length > 0;
+        connectLive(currentDocs, isReturn || hasHistory, hasHistory ? messages : undefined);
       } else {
         setConnectionStatus('connected');
         console.log("Setting initial greeting for text mode.");
@@ -1192,7 +1244,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
       console.warn("AI usage blocked due to billing limit.");
       return;
     }
-    if ((isConnectingRef.current && !isReconnectingRef.current) || connectionStatusRef.current === 'connected') {
+    if ((isConnectingRef.current && !isReconnectingRef.current) || (connectionStatusRef.current === 'connected' && liveSessionRef.current)) {
       console.log("Already connecting or connected to Gemini Live, skipping.");
       return;
     }
@@ -1356,6 +1408,11 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         },
         callbacks: {
           onopen: () => {
+            if (showSummaryRef.current) {
+              console.log("Summary shown, closing new session immediately...");
+              sessionPromise.then(s => s?.close());
+              return;
+            }
             console.log("Live session opened successfully");
             setConnectionStatus('connected');
             setIsListening(true);
@@ -1379,16 +1436,21 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 parts: [{ text: msg.content }]
               }));
               
+              const lastMsg = initialHistory[initialHistory.length - 1];
+              const resumePrompt = lastMsg.role === 'user' 
+                ? `The user has switched from text to voice mode and is waiting for your response to their last message: "${lastMsg.content}". Please respond naturally via voice.`
+                : `The user has switched back to voice mode. You have already answered their last question. Please wait for them to speak or acknowledge their presence if they speak first.`;
+
               sessionPromise.then(s => {
                 if (s && isPresentRef.current) {
                   setTimeout(() => {
                     if (s && isPresentRef.current) {
                       s.sendClientContent({
                         turns: historyTurns,
-                        turnComplete: true
+                        turnComplete: false // Don't trigger response yet
                       });
                       // Also send a small prompt to acknowledge the return
-                      s.sendRealtimeInput({ text: "The user has switched back to voice mode. Please acknowledge their last message or wait for them to speak." });
+                      s.sendRealtimeInput({ text: resumePrompt });
                     }
                   }, 100);
                 }
@@ -1427,7 +1489,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                   const video = videoRef.current;
                   
                   const sendFrame = () => {
-                    if (!isPresentRef.current || !liveSessionRef.current) return;
+                    if (!isPresentRef.current || !liveSessionRef.current || showSummaryRef.current) return;
                     
                     if (video.videoWidth > 0 && video.videoHeight > 0) {
                       // Resize for performance and API limits
@@ -1461,7 +1523,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
             processor.connect(audioContextRef.current!.destination);
             
             processor.onaudioprocess = (e) => {
-              if (!isPresentRef.current || connectionStatusRef.current !== 'connected') return;
+              if (!isPresentRef.current || connectionStatusRef.current !== 'connected' || showSummaryRef.current) return;
               const inputData = e.inputBuffer.getChannelData(0);
               const pcmData = new Int16Array(inputData.length);
               for (let i = 0; i < inputData.length; i++) {
@@ -1491,7 +1553,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
           },
           onmessage: async (message: LiveServerMessage) => {
             try {
-              if (!isPresentRef.current) return;
+              if (!isPresentRef.current || showSummaryRef.current) return;
               console.log("Received message from Gemini:", message);
               
               if (message.serverContent?.modelTurn?.parts) {
@@ -1981,101 +2043,24 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     isModelSpeakingRef.current = false;
   };
 
-  const handleExit = () => {
-    console.log("Exiting Kiosk Mode...");
-    setShowSummary(false);
-    stopAudioPlayback();
-    
-    // Reset billing refs
-    userVoiceStartTimeRef.current = 0;
-    userVoiceDurationRef.current = 0;
-    modelVoiceDurationRef.current = 0;
-    isModelSpeakingRef.current = false;
-
-    if (liveSessionRef.current) {
-      intentionalCloseRef.current = true;
-      liveSessionRef.current.close();
-      liveSessionRef.current = null;
-    }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop());
-      mediaStreamRef.current = null;
-    }
-    isPresentRef.current = false;
-    setIsPresent(false);
-    onExit();
-  };
-
-  const handleReset = () => {
-    console.log("Full UI Reset triggered.");
-    setShowSummary(false);
-    stopAudioPlayback();
-    
-    // Reset billing refs
-    userVoiceStartTimeRef.current = 0;
-    userVoiceDurationRef.current = 0;
-    modelVoiceDurationRef.current = 0;
-    isModelSpeakingRef.current = false;
-
-    if (liveSessionRef.current) {
-      intentionalCloseRef.current = true;
-      try { liveSessionRef.current.close(); } catch (e) {}
-      liveSessionRef.current = null;
-    }
-    
-    // Comprehensive state reset
-    setIsPresent(false);
-    isPresentRef.current = false;
-    lastOfferedSourcesRef.current = [];
-    awaitingSourceConfirmationRef.current = false;
-    setIsShowingSourcePending(false);
-    sourceFlowStateRef.current = 'idle';
-    lastReadConfirmationSourceKeyRef.current = null;
-    lastReadPromptedSourceKeyRef.current = null;
-    setSelectedSource(null);
-    setMessages([]);
-    setTranscription('');
-    setInput('');
-    setIsListening(false);
-    setIsThinking(false);
-    setIsSpeaking(false);
-    setSelectedSource(null);
-    setConnectionStatus('idle');
-    setRemainingSeconds(null);
-    lastSeenTimeRef.current = null;
-    hasPromptedRef.current = false;
-    currentTurnRef.current = { userText: '', modelText: '', sources: [] };
-    currentUserTranscriptRef.current = '';
-    latestTranscriptRef.current = '';
-    finalUserTranscriptRef.current = '';
-    setSession(null);
-    sessionRef.current = null;
-    reconnectAttemptsRef.current = 0;
-    isReconnectingRef.current = false;
-  };
-
   useEffect(() => {
     if (showSummary) {
       console.log("Summary shown, stopping audio and ending session...");
       stopAudioPlayback();
+      intentionalCloseRef.current = true;
       if (liveSessionRef.current) {
-        liveSessionRef.current.close();
+        try { liveSessionRef.current.close(); } catch (e) {}
         liveSessionRef.current = null;
       }
       setIsListening(false);
+      setIsThinking(false);
+      setIsSpeaking(false);
     }
   }, [showSummary]);
 
   // Handle mode switching session continuity
-  useEffect(() => {
-    if (isVoiceMode && isPresent && !liveSessionRef.current && !isConnectingRef.current && messages.length > 0) {
-      console.log("Switching back to voice mode, resuming session with history...");
-      connectLive(documents, true, messages);
-    }
-  }, [isVoiceMode, isPresent]);
-
   const handleSend = async (text: string) => {
-    if (!text.trim() || !session) return;
+    if (!text.trim() || !session || showSummary) return;
     if (billingAccessState === 'blocked') {
       setError("AI features are currently suspended for this account.");
       return;
@@ -2153,7 +2138,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     <div className="app-container">
       <div className={`device-frame bg-dots ${isPresent ? 'is-voice' : ''}`}>
         <AnimatePresence mode="wait">
-          {!isPresent ? (
+          {!isPresent && !showSummary ? (
             <motion.div 
               key="waiting"
               initial={{ opacity: 0 }}
