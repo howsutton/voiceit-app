@@ -1473,7 +1473,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                   const prevPagePatterns = ['previous page', 'page previous', 'page back', 'back page', 'previous', 'back'];
                   const firstPagePatterns = ['first page', 'go to first page'];
                   const lastPagePatterns = ['last page', 'go to last page'];
-                  const closePatterns = ['close', 'close sources', 'hide sources', 'stop showing', 'exit', 'done', 'close all source documents', 'close all sources', 'close all source windows', 'close all documents', 'hide all source documents', 'hide all sources', 'dismiss all sources', 'exit all sources'];
+                  const closePatterns = ['close', 'close sources', 'close all sources', 'close sources popup', 'close source popup', 'close all source documents', 'close source documents', 'hide sources', 'hide all sources', 'hide source popup', 'dismiss sources', 'dismiss sources popup', 'dismiss all sources', 'stop showing', 'exit', 'done'];
 
                   if (nextPagePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
                     const totalPages = Math.ceil(documents.length / allSourcesPageSize);
@@ -1565,7 +1565,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                   const nextPatterns = ['next', 'next source', 'show next', 'go next', 'forward', 'skip'];
                   const prevPatterns = ['previous', 'previous source', 'go back', 'show previous', 'back'];
                   const closePatterns = ['close', 'close source', 'hide source', 'stop showing', 'not interested', 'no thanks', 'done', 'close the window', 'close window', 'close this window', 'close this source', 'close this document', 'hide this window', 'dismiss this window'];
-                  const closeAllPatterns = ['close all', 'hide all', 'close all source documents', 'close all sources', 'close all source windows', 'close all documents', 'hide all source documents', 'hide all sources', 'dismiss all sources', 'exit all sources'];
+                  const closeAllPatterns = ['close all', 'hide all', 'close all sources', 'close sources popup', 'close source popup', 'close all source documents', 'close source documents', 'hide all sources', 'hide source popup', 'dismiss sources popup', 'dismiss all sources', 'close all source windows', 'close all documents', 'hide all source documents', 'exit all sources'];
 
                   if (nextPatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
                     if (activePreviewIndexRef.current < activePreviewSourcesRef.current.length - 1) {
