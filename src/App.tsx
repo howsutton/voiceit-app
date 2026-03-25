@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Project, Message, Document, Account, User as UserType, Analytics, ProjectMessageLogItem, GlobalMessageLogItem, UsageLogItem, PaginatedResponse } from './types';
 import { generateGroundedAnswer } from './services/aiService';
+import { printSessionReceipt } from './services/printer';
 import { QRCodeCanvas } from 'qrcode.react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
@@ -298,15 +299,28 @@ const SummaryPage = ({ sessionId }: { sessionId: string }) => {
 };
 
 const SummaryPopup = ({ sessionId, onClose, onPrint }: { sessionId: string, onClose: () => void, onPrint?: () => void }) => {
-  const PUBLIC_BASE_URL = import.meta.env.VITE_PUBLIC_BASE_URL || "https://voiceit.caribdesigns.com";
+  const PUBLIC_BASE_URL = import.meta.env.VITE_PUBLIC_BASE_URL || window.location.origin;
   const summaryUrl = `${PUBLIC_BASE_URL}/session/${sessionId}`;
+  const hasAutoPrinted = useRef(false);
+  const [printError, setPrintError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!hasAutoPrinted.current) {
+      hasAutoPrinted.current = true;
+      printSessionReceipt(sessionId).catch(e => {
+        console.error("Auto-print failed:", e);
+        setPrintError("Print failed");
+      });
+    }
+  }, [sessionId]);
 
   const handlePrint = () => {
+    setPrintError(null);
     if (onPrint) onPrint();
-    // Ensure the print area is ready and then trigger print
-    setTimeout(() => {
-      window.print();
-    }, 100);
+    printSessionReceipt(sessionId).catch(e => {
+      console.error("Manual print failed:", e);
+      setPrintError("Printer unavailable");
+    });
   };
 
   return (
@@ -430,13 +444,18 @@ const SummaryPopup = ({ sessionId, onClose, onPrint }: { sessionId: string, onCl
           </div>
           
           <div className="flex flex-col sm:flex-row gap-4">
-            <button 
-              onClick={handlePrint}
-              className="flex-1 py-5 bg-white/5 border border-white/10 text-white rounded-2xl font-bold hover:bg-white/10 transition-all flex items-center justify-center gap-2"
-            >
-              <Printer className="w-5 h-5" />
-              Print Receipt
-            </button>
+            <div className="flex-1 flex flex-col gap-2">
+              <button 
+                onClick={handlePrint}
+                className="w-full py-5 bg-white/5 border border-white/10 text-white rounded-2xl font-bold hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+              >
+                <Printer className="w-5 h-5" />
+                Print Receipt
+              </button>
+              {printError && (
+                <p className="text-red-500 text-[10px] font-bold uppercase tracking-widest animate-pulse">{printError}</p>
+              )}
+            </div>
             <button 
               onClick={onClose}
               className="flex-1 py-5 bg-app-accent text-white rounded-2xl font-bold hover:brightness-110 transition-all shadow-[0_0_30px_rgba(59,130,246,0.3)] active:scale-[0.98]"
@@ -573,6 +592,9 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const selectedSource = activePreviewSources[activePreviewIndex] || null;
 
   const [showSettings, setShowSettings] = useState(false);
+
+  const isEndingSessionRef = useRef(false);
+  const awaitingAnythingElseConfirmationRef = useRef(false);
 
   const getDeviceType = useCallback(() => {
     const ua = navigator.userAgent;
@@ -834,6 +856,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const handleReset = useCallback(() => {
     console.log("Full UI Reset triggered.");
     setShowSummary(false);
+    isEndingSessionRef.current = false;
     stopAudioPlayback();
     
     // Reset billing refs
@@ -868,14 +891,28 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     lastActivityRef.current = Date.now();
     hasPromptedRef.current = false;
     setRemainingSeconds(null);
+    awaitingAnythingElseConfirmationRef.current = false;
     clearSourceFlow();
   }, [clearSourceFlow]);
 
   const enterSummaryMode = useCallback(() => {
     console.log("Entering summary mode...");
+    
+    // Explicitly stop all AI activity as per requirements
+    stopAudioPlayback();
+    if (liveSessionRef.current) {
+      intentionalCloseRef.current = true;
+      try {
+        liveSessionRef.current.close();
+      } catch (e) {}
+      liveSessionRef.current = null;
+    }
+    setIsListening(false);
+    setIsSpeaking(false);
+    setIsThinking(false);
+    
     clearSourceFlow();
     lastActivityRef.current = Date.now(); // Reset activity timer for summary page
-    intentionalCloseRef.current = true;
     setShowSummary(true);
   }, [clearSourceFlow]);
 
@@ -888,6 +925,12 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     }
     isPresentRef.current = false;
     setIsPresent(false);
+    
+    // Exit fullscreen if active
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(e => console.warn("Fullscreen exit failed", e));
+    }
+    
     onExit();
   };
 
@@ -1631,7 +1674,19 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       }
                     });
                   } else if (call.name === 'showSummary') {
-                    enterSummaryMode();
+                    if (!isEndingSessionRef.current) {
+                      isEndingSessionRef.current = true;
+                      const finalPhrase = "I am printing your session receipt now. You can scan the QR code on the screen to access your questions, answers, and source documents.";
+                      sessionPromise.then(s => {
+                        if (s) {
+                          s.sendRealtimeInput({ text: `Say exactly: "${finalPhrase}"` });
+                        }
+                      });
+                      setTimeout(() => {
+                        enterSummaryMode();
+                      }, 10000);
+                    }
+                    
                     sessionPromise.then(s => {
                       if (s) {
                         s.sendToolResponse({
@@ -1762,6 +1817,22 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 hasPromptedRef.current = false;
 
                 const normalized = text.toLowerCase().trim().replace(/[.,?!]/g, '');
+                const endSessionPatterns = [
+                  'no', 'no thanks', 'nothing else', 'thats all', 'that is all', 
+                  'im done', 'i am done', 'goodbye', 'finish', 'done', 'close session',
+                  'no thats all', 'no that is all', 'nothing else thanks'
+                ];
+                const isEndIntent = endSessionPatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p));
+
+                // Helper to ask the follow-up question
+                const askAnythingElse = () => {
+                  awaitingAnythingElseConfirmationRef.current = true;
+                  sessionPromise.then(s => {
+                    if (s) {
+                      s.sendRealtimeInput({ text: 'Say exactly: "Is there anything else I can help you with today?"' });
+                    }
+                  });
+                };
 
                 // --- Source Flow Lifecycle Handling ---
 
@@ -1771,6 +1842,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                     'yes', 'yeah', 'yep', 'yup', 'sure', 'okay', 'ok', 'show me', 'open it', 
                     'show source', 'yes please', 'please do', 'show it', 'open source', 'please'
                   ];
+                  const negativePatterns = ['no', 'no thanks', 'dont show', 'skip', 'not now', 'no dont', 'stop', 'not interested', 'no thanks'];
                   
                   if (affirmativePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
                     console.log("Affirmative source confirmation detected:", normalized);
@@ -1778,7 +1850,6 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                     setIsShowingSourcePending(true);
                     openSource(sourceToShow, lastOfferedSourcesRef.current);
                     
-                    // Also ensure it's in the messages if not already there
                     setMessages(prev => {
                       const lastMsg = prev[prev.length - 1];
                       if (lastMsg?.role === 'model') {
@@ -1793,9 +1864,12 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                     setTimeout(() => setIsShowingSourcePending(false), 1000);
                     awaitingSourceConfirmationRef.current = false;
                     return; // Consume this transcript
+                  } else if (negativePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
+                    console.log("Negative source confirmation detected:", normalized);
+                    awaitingSourceConfirmationRef.current = false;
+                    askAnythingElse();
+                    return;
                   } else if (text.length > 25) {
-                    // If user says something longer/substantive, expire the source offer window
-                    // Increased threshold to be less fragile to noise
                     awaitingSourceConfirmationRef.current = false;
                   }
                 }
@@ -1809,27 +1883,12 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                     console.log("Affirmative read confirmation detected:", normalized);
                     sourceFlowStateRef.current = 'reading_source';
                     lastReadConfirmationSourceKeyRef.current = `${selectedSource.documentTitle}-${selectedSource.pageNumber}`;
-                    // Let the model handle the reading via prompt instruction
                   } else if (negativePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
                     console.log("Negative read confirmation detected:", normalized);
-                    
-                    const isCloseIntent = ['close', 'close source', 'hide source', 'not interested'].some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p));
-                    
-                    if (isCloseIntent) {
-                      clearSourceFlow();
-                      sourceFlowStateRef.current = 'awaiting_post_source_action';
-                    } else {
-                      sourceFlowStateRef.current = 'awaiting_post_source_action';
-                      lastReadConfirmationSourceKeyRef.current = `${selectedSource.documentTitle}-${selectedSource.pageNumber}`;
-                    }
-                    
-                    // Send a small signal to the model so it doesn't wait or treat "no" as session end
-                    sessionPromise.then(s => {
-                      if (s) {
-                        s.sendRealtimeInput({ text: "The user does not want the source read aloud. Continue the conversation naturally." });
-                      }
-                    });
-                    return; // Consume this transcript to prevent it being treated as session end
+                    clearSourceFlow();
+                    sourceFlowStateRef.current = 'awaiting_post_source_action';
+                    askAnythingElse();
+                    return;
                   }
                 }
 
@@ -1853,33 +1912,53 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                   } else if (closeAllPatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
                     clearSourceFlow();
                     sourceFlowStateRef.current = 'awaiting_post_source_action';
+                    askAnythingElse();
                     return;
                   } else if (closePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
                     clearSourceFlow();
                     sourceFlowStateRef.current = 'awaiting_post_source_action';
+                    askAnythingElse();
                     return;
                   }
                 }
 
-                // 3. Awaiting POST-source action (e.g. user is done)
-                if (selectedSource && sourceFlowStateRef.current === 'awaiting_post_source_action') {
-                  const endSessionPatterns = [
-                    'no', 'no thanks', 'nothing else', 'thats all', 'that is all', 
-                    'im done', 'i am done', 'goodbye', 'finish', 'done', 'close session',
-                    'no thats all', 'no that is all', 'nothing else thanks'
-                  ];
+                // 3. Post-source or General End Session Detection
+                if (isEndIntent) {
+                  if (awaitingAnythingElseConfirmationRef.current) {
+                    if (!isEndingSessionRef.current) {
+                      isEndingSessionRef.current = true;
+                      console.log("End session confirmed:", normalized);
+                      const finalPhrase = "I am printing your session receipt now. You can scan the QR code on the screen to access your questions, answers, and source documents.";
+                      
+                      sessionPromise.then(s => {
+                        if (s) {
+                          s.sendRealtimeInput({ text: `Say exactly: "${finalPhrase}"` });
+                        }
+                      });
 
-                  if (endSessionPatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
-                    console.log("End session detected after source:", normalized);
-                    enterSummaryMode();
+                      setTimeout(() => {
+                        enterSummaryMode();
+                      }, 10000);
+                    }
                     return; // Consume this transcript
+                  } else {
+                    console.log("End intent detected, asking follow-up:", normalized);
+                    askAnythingElse();
+                    return;
                   }
+                }
+
+                // Reset the "anything else" flag if user asks a substantive question
+                if (text.length > 20 && !isEndIntent) {
+                  awaitingAnythingElseConfirmationRef.current = false;
                 }
 
                 // Handle voice commands when summary is showing
                 if (showSummary) {
                   if (text.includes('print')) {
-                    window.print();
+                    if (session) {
+                      printSessionReceipt(session).catch(e => console.error("Voice print failed:", e));
+                    }
                   } else if (text.includes('close') || text.includes('done') || text.includes('finish')) {
                     handleReset();
                   }
@@ -2885,6 +2964,14 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     )
   }
   </AnimatePresence>
+  
+  {/* Exit Kiosk Button - Bottom Right */}
+  <button 
+    onClick={handleExit}
+    className="fixed bottom-4 right-4 z-[300] text-[10px] text-white/20 hover:text-white/60 transition-colors font-sans uppercase tracking-[0.4em] cursor-pointer"
+  >
+    Close
+  </button>
   </div>
   </div>
   );
@@ -5759,27 +5846,35 @@ export default function App() {
     });
   }, []);
 
+  const requestFullscreen = () => {
+    document.documentElement.requestFullscreen().catch(e => console.warn("Fullscreen request failed", e));
+  };
+
   if (mode === 'select') {
     return (
-      <div className="min-h-screen bg-bloom bg-dots flex flex-col items-center justify-center p-4 md:p-8 relative overflow-hidden">
+      <div className="min-h-screen bg-bloom bg-dots flex flex-col items-center p-4 md:p-8 relative overflow-y-auto">
         {/* Background Ambient Glows */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1000px] h-[1000px] bg-indigo-600/10 rounded-full blur-[120px]" />
           <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-600/10 rounded-full blur-[100px]" />
         </div>
 
-        <div className="w-full max-w-4xl relative z-10">
-          <div className="text-center mb-8 md:mb-12">
+        <div className="w-full max-w-4xl relative z-10 flex flex-col flex-1">
+          <header className="flex items-center justify-between py-6 md:py-10">
+            <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-32 md:h-48 w-auto" referrerPolicy="no-referrer" />
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="w-16 h-16 md:w-20 md:h-20 bg-indigo-600 rounded-[2rem] flex items-center justify-center text-white mx-auto mb-6 md:mb-8 shadow-2xl shadow-indigo-500/20"
+              className="w-12 h-12 md:w-16 md:h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-2xl shadow-indigo-500/20"
             >
-              <Volume2 className="w-8 h-8 md:w-10 md:h-10" />
+              <Volume2 className="w-6 h-6 md:w-8 md:h-8" />
             </motion.div>
-            <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-32 md:h-48 w-auto mb-4" referrerPolicy="no-referrer" />
-            <p className="text-slate-300 font-sans font-black uppercase tracking-[0.4em] text-[10px] md:text-xs">Select Interface to Begin</p>
-          </div>
+          </header>
+
+          <div className="flex-1 flex flex-col justify-center pb-12 md:pb-20">
+            <div className="text-center mb-8 md:mb-12">
+              <p className="text-slate-300 font-sans font-black uppercase tracking-[0.4em] text-[10px] md:text-xs">Select Interface to Begin</p>
+            </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10">
             <motion.button 
@@ -5814,7 +5909,7 @@ export default function App() {
                   {projects.map(p => (
                     <button 
                       key={p.id}
-                      onClick={() => { setSelectedProject(p); setMode('kiosk'); }}
+                      onClick={() => { setSelectedProject(p); setMode('kiosk'); requestFullscreen(); }}
                       className="w-full p-4 bg-white/5 hover:bg-blue-600/20 rounded-2xl text-left flex justify-between items-center group/item transition-all border border-transparent hover:border-blue-500/30"
                     >
                       <span className="font-bold text-slate-200 group-hover/item:text-blue-400 text-sm md:text-base">{p.title}</span>
@@ -5827,12 +5922,13 @@ export default function App() {
           </div>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   if (mode === 'admin') return (
     <AdminDashboard 
-      onLaunchKiosk={(p) => { setSelectedProject(p); setMode('kiosk'); }} 
+      onLaunchKiosk={(p) => { setSelectedProject(p); setMode('kiosk'); requestFullscreen(); }} 
       sessionTimeout={sessionTimeout}
       setSessionTimeout={setSessionTimeout}
       billingVoiceRate={billingVoiceRate}
