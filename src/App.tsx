@@ -587,9 +587,35 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
   const [isThinking, setIsThinking] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [documents, setDocuments] = useState<Document[]>([]);
+  const sortedDocs = useMemo(() => {
+    return [...documents].sort((a, b) => a.title.localeCompare(b.title));
+  }, [documents]);
   const [activePreviewSources, setActivePreviewSources] = useState<any[]>([]);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
   const selectedSource = activePreviewSources[activePreviewIndex] || null;
+
+  const [showAllSourcesModal, setShowAllSourcesModal] = useState(false);
+  const [allSourcesPage, setAllSourcesPage] = useState(1);
+  const allSourcesPageSize = 6;
+  const awaitingAllSourcesConfirmationRef = useRef<boolean>(false);
+  const [isAllSourcesPending, setIsAllSourcesPending] = useState(false);
+
+  // Refs for state to be used in onmessage callback
+  const showAllSourcesModalRef = useRef(showAllSourcesModal);
+  const allSourcesPageRef = useRef(allSourcesPage);
+  const selectedSourceRef = useRef(selectedSource);
+  const activePreviewSourcesRef = useRef(activePreviewSources);
+  const activePreviewIndexRef = useRef(activePreviewIndex);
+  const sortedDocsRef = useRef(sortedDocs);
+
+  useEffect(() => {
+    showAllSourcesModalRef.current = showAllSourcesModal;
+    allSourcesPageRef.current = allSourcesPage;
+    selectedSourceRef.current = selectedSource;
+    activePreviewSourcesRef.current = activePreviewSources;
+    activePreviewIndexRef.current = activePreviewIndex;
+    sortedDocsRef.current = sortedDocs;
+  }, [showAllSourcesModal, allSourcesPage, selectedSource, activePreviewSources, activePreviewIndex, sortedDocs]);
 
   const [showSettings, setShowSettings] = useState(false);
 
@@ -911,6 +937,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     setIsSpeaking(false);
     setIsThinking(false);
     
+    setShowAllSourcesModal(false);
     clearSourceFlow();
     lastActivityRef.current = Date.now(); // Reset activity timer for summary page
     setShowSummary(true);
@@ -925,12 +952,6 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     }
     isPresentRef.current = false;
     setIsPresent(false);
-    
-    // Exit fullscreen if active
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(e => console.warn("Fullscreen exit failed", e));
-    }
-    
     onExit();
   };
 
@@ -1360,6 +1381,15 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         },
       };
 
+      const listAllSourcesFunctionDeclaration: FunctionDeclaration = {
+        name: "listAllSources",
+        parameters: {
+          type: Type.OBJECT,
+          description: "Open a popup listing all ingested source documents for the project. Call this when the user says 'yes' to seeing all sources or explicitly asks to list all sources.",
+          properties: {},
+        },
+      };
+
       const showSummaryFunctionDeclaration: FunctionDeclaration = {
         name: "showSummary",
         parameters: {
@@ -1425,6 +1455,8 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         - If they say "close source", "hide source", or "stop showing", call the 'closeSource' tool.
         - You can handle multiple sources. If there are multiple, ask which one they want to see or offer to show them all.
         - READ SOURCE FEATURE: When a source is shown on screen via 'showSource', you MUST ask the user if they would like you to read out what is shown. If they say yes, read the excerpt clearly and naturally.
+        - ALL SOURCES FEATURE: If the user asks to see "all sources", "list sources", "what are the sources", or similar, you MUST ask: "Would you like me to show all ingested source files?". If they say "yes", "show me", or any affirmative, call the 'listAllSources' tool.
+        - NAVIGATION: When the "all sources" list is open, the user can say "next page", "previous page", "first page", "last page", "go to page [number]", or "open [document name/index]". When a document preview is open, they can say "next", "previous", or "close".
         
         SESSION END INSTRUCTION:
         When all questions are asked and answers are given and sources are shown and closed, ask the user: "Is there anything else I can help you with today?".
@@ -1447,7 +1479,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
           systemInstruction,
           inputAudioTranscription: {},
           outputAudioTranscription: {},
-          tools: [{ functionDeclarations: [showSourceFunctionDeclaration, closeSourceFunctionDeclaration, showSummaryFunctionDeclaration] }],
+          tools: [{ functionDeclarations: [showSourceFunctionDeclaration, closeSourceFunctionDeclaration, showSummaryFunctionDeclaration, listAllSourcesFunctionDeclaration] }],
         },
         callbacks: {
           onopen: () => {
@@ -1673,6 +1705,20 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                         });
                       }
                     });
+                  } else if (call.name === 'listAllSources') {
+                    setShowAllSourcesModal(true);
+                    setAllSourcesPage(1);
+                    sessionPromise.then(s => {
+                      if (s) {
+                        s.sendToolResponse({
+                          functionResponses: [{
+                            name: 'listAllSources',
+                            id: call.id,
+                            response: { success: true }
+                          }]
+                        });
+                      }
+                    });
                   } else if (call.name === 'showSummary') {
                     if (!isEndingSessionRef.current) {
                       isEndingSessionRef.current = true;
@@ -1719,7 +1765,11 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                   'no thanks', 'dont read', 'skip', 'not now', 'no dont', 'stop',
                   'thats all', 'that is all', 'im done', 'i am done', 'goodbye', 
                   'finish', 'done', 'close session', 'no thats all', 'no that is all', 
-                  'nothing else thanks'
+                  'nothing else thanks', 'open sources', 'open all sources', 
+                  'what are all the sources', 'list sources', 'show all sources',
+                  'next page', 'previous page', 'page next', 'page previous',
+                  'first page', 'last page', 'go to page', 'page forward', 'page back',
+                  'next', 'forward', 'back', 'previous', 'close'
                 ];
                 const isControlOnly = controlPhrases.some(p => normalizedTranscript === p);
                 
@@ -1817,6 +1867,21 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 hasPromptedRef.current = false;
 
                 const normalized = text.toLowerCase().trim().replace(/[.,?!]/g, '');
+                
+                // --- All Sources Intent Recognition ---
+                const allSourcesTriggers = ['open sources', 'open all sources', 'what are all the sources', 'list sources', 'show all sources', 'what are the sources', 'show sources'];
+                if (allSourcesTriggers.some(p => normalized === p || normalized.includes(p))) {
+                  if (!showAllSourcesModalRef.current && !awaitingAllSourcesConfirmationRef.current) {
+                    awaitingAllSourcesConfirmationRef.current = true;
+                    sessionPromise.then(s => {
+                      if (s) {
+                        s.sendRealtimeInput({ text: 'Say exactly: "Would you like me to show all ingested source files?"' });
+                      }
+                    });
+                    return;
+                  }
+                }
+
                 const endSessionPatterns = [
                   'no', 'no thanks', 'nothing else', 'thats all', 'that is all', 
                   'im done', 'i am done', 'goodbye', 'finish', 'done', 'close session',
@@ -1835,6 +1900,25 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 };
 
                 // --- Source Flow Lifecycle Handling ---
+
+                // 0. Awaiting ALL SOURCES confirmation
+                if (awaitingAllSourcesConfirmationRef.current) {
+                  const affirmativePatterns = ['yes', 'yeah', 'yep', 'yup', 'sure', 'okay', 'ok', 'show me', 'open them', 'yes please', 'please do', 'show it', 'open sources', 'please'];
+                  const negativePatterns = ['no', 'no thanks', 'dont show', 'skip', 'not now', 'no dont', 'stop', 'not interested', 'no thanks'];
+
+                  if (affirmativePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
+                    console.log("Affirmative all sources confirmation detected:", normalized);
+                    setShowAllSourcesModal(true);
+                    setAllSourcesPage(1);
+                    awaitingAllSourcesConfirmationRef.current = false;
+                    return;
+                  } else if (negativePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
+                    console.log("Negative all sources confirmation detected:", normalized);
+                    awaitingAllSourcesConfirmationRef.current = false;
+                    askAnythingElse();
+                    return;
+                  }
+                }
 
                 // 1. Awaiting SHOW confirmation
                 if (awaitingSourceConfirmationRef.current && lastOfferedSourcesRef.current.length > 0) {
@@ -1875,14 +1959,14 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 }
 
                 // 2. Awaiting READ confirmation
-                if (selectedSource && sourceFlowStateRef.current === 'awaiting_read_confirmation') {
+                if (selectedSourceRef.current && sourceFlowStateRef.current === 'awaiting_read_confirmation') {
                   const affirmativePatterns = ['yes', 'yeah', 'yep', 'sure', 'okay', 'ok', 'read it', 'please do', 'yes please', 'please read'];
                   const negativePatterns = ['no', 'no thanks', 'dont read', 'skip', 'not now', 'no dont', 'stop', 'close', 'close source', 'hide source', 'not interested'];
 
                   if (affirmativePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
                     console.log("Affirmative read confirmation detected:", normalized);
                     sourceFlowStateRef.current = 'reading_source';
-                    lastReadConfirmationSourceKeyRef.current = `${selectedSource.documentTitle}-${selectedSource.pageNumber}`;
+                    lastReadConfirmationSourceKeyRef.current = `${selectedSourceRef.current.documentTitle}-${selectedSourceRef.current.pageNumber}`;
                   } else if (negativePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
                     console.log("Negative read confirmation detected:", normalized);
                     clearSourceFlow();
@@ -1892,20 +1976,111 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                   }
                 }
 
+                // --- All Sources Modal Navigation ---
+                if (showAllSourcesModalRef.current && !selectedSourceRef.current) {
+                  const nextPagePatterns = ['next page', 'page next', 'page forward', 'forward page', 'next', 'skip'];
+                  const prevPagePatterns = ['previous page', 'page previous', 'page back', 'back page', 'previous', 'back'];
+                  const firstPagePatterns = ['first page', 'go to first page'];
+                  const lastPagePatterns = ['last page', 'go to last page'];
+                  const closePatterns = ['close', 'close sources', 'hide sources', 'stop showing', 'exit', 'done'];
+
+                  if (nextPagePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
+                    const totalPages = Math.ceil(documents.length / allSourcesPageSize);
+                    setAllSourcesPage(prev => Math.min(totalPages, prev + 1));
+                    return;
+                  }
+                  if (prevPagePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
+                    setAllSourcesPage(prev => Math.max(1, prev - 1));
+                    return;
+                  }
+                  if (firstPagePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
+                    setAllSourcesPage(1);
+                    return;
+                  }
+                  if (lastPagePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
+                    const totalPages = Math.ceil(documents.length / allSourcesPageSize);
+                    setAllSourcesPage(totalPages);
+                    return;
+                  }
+                  if (closePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
+                    setShowAllSourcesModal(false);
+                    return;
+                  }
+
+                  // Handle "go to page [number]"
+                  if (normalized.includes('go to page') || normalized.includes('page number')) {
+                    const match = normalized.match(/page (?:number )?(\d+)/);
+                    if (match) {
+                      const pageNum = parseInt(match[1]);
+                      const totalPages = Math.ceil(documents.length / allSourcesPageSize);
+                      if (pageNum >= 1 && pageNum <= totalPages) {
+                        setAllSourcesPage(pageNum);
+                        return;
+                      }
+                    }
+                  }
+
+                  // Handle "open [name]" or "open [index]"
+                  const indexWords = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth'];
+                  const indexNumbers = ['1', '2', '3', '4', '5', '6', 'one', 'two', 'three', 'four', 'five', 'six'];
+                  
+                  for (let i = 0; i < indexWords.length; i++) {
+                    const word = indexWords[i];
+                    const num = indexNumbers[i];
+                    const numWord = indexNumbers[i+6];
+                    
+                    if (normalized.includes(`open ${word}`) || normalized.includes(`show ${word}`) || normalized.includes(`view ${word}`) ||
+                        normalized.includes(`open ${num}`) || normalized.includes(`show ${num}`) || normalized.includes(`view ${num}`) ||
+                        normalized.includes(`open ${numWord}`) || normalized.includes(`show ${numWord}`) || normalized.includes(`view ${numWord}`)) {
+                      const docIndex = (allSourcesPageRef.current - 1) * allSourcesPageSize + i;
+                      if (sortedDocsRef.current[docIndex]) {
+                        const doc = sortedDocsRef.current[docIndex];
+                        openSource({ documentTitle: doc.title, pageNumber: 1, excerpt: doc.content }, sortedDocsRef.current.map(d => ({ documentTitle: d.title, pageNumber: 1, excerpt: d.content })));
+                        setActivePreviewIndex(docIndex);
+                        
+                        // AI follow-up
+                        sessionPromise.then(s => {
+                          if (s) {
+                            s.sendRealtimeInput({ text: `I’ve opened ${doc.title}. Would you like information about it?` });
+                          }
+                        });
+                        return;
+                      }
+                    }
+                  }
+                  
+                  // Try matching by name
+                  for (const doc of sortedDocsRef.current) {
+                    if (normalized.includes(`open ${doc.title.toLowerCase()}`) || normalized.includes(`show ${doc.title.toLowerCase()}`)) {
+                      const docIndex = sortedDocsRef.current.indexOf(doc);
+                      openSource({ documentTitle: doc.title, pageNumber: 1, excerpt: doc.content }, sortedDocsRef.current.map(d => ({ documentTitle: d.title, pageNumber: 1, excerpt: d.content })));
+                      setActivePreviewIndex(docIndex);
+                      
+                      // AI follow-up
+                      sessionPromise.then(s => {
+                        if (s) {
+                          s.sendRealtimeInput({ text: `I’ve opened ${doc.title}. Would you like information about it?` });
+                        }
+                      });
+                      return;
+                    }
+                  }
+                }
+
                 // --- Multi-Source Navigation & Closing ---
-                if (selectedSource) {
-                  const nextPatterns = ['next', 'next source', 'show next', 'go next'];
-                  const prevPatterns = ['previous', 'previous source', 'go back', 'show previous'];
-                  const closePatterns = ['close', 'close source', 'hide source', 'stop showing', 'not interested', 'no thanks'];
+                if (selectedSourceRef.current) {
+                  const nextPatterns = ['next', 'next source', 'show next', 'go next', 'forward', 'skip'];
+                  const prevPatterns = ['previous', 'previous source', 'go back', 'show previous', 'back'];
+                  const closePatterns = ['close', 'close source', 'hide source', 'stop showing', 'not interested', 'no thanks', 'done'];
                   const closeAllPatterns = ['close all', 'hide all'];
 
                   if (nextPatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
-                    if (activePreviewIndex < activePreviewSources.length - 1) {
+                    if (activePreviewIndexRef.current < activePreviewSourcesRef.current.length - 1) {
                       setActivePreviewIndex(prev => prev + 1);
                       return;
                     }
                   } else if (prevPatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
-                    if (activePreviewIndex > 0) {
+                    if (activePreviewIndexRef.current > 0) {
                       setActivePreviewIndex(prev => prev - 1);
                       return;
                     }
@@ -2469,17 +2644,20 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 onClick={() => {
                   if (selectedSource) {
                     clearSourceFlow();
+                  } else if (showAllSourcesModal) {
+                    setShowAllSourcesModal(false);
                   } else {
-                    const lastMsgWithSources = [...messages].reverse().find(m => m.sources && m.sources.length > 0);
-                    if (lastMsgWithSources && lastMsgWithSources.sources) {
-                      openSource(lastMsgWithSources.sources[0], lastMsgWithSources.sources);
+                    // Trigger "all sources" flow
+                    awaitingAllSourcesConfirmationRef.current = true;
+                    if (liveSessionRef.current) {
+                      liveSessionRef.current.sendRealtimeInput({ text: 'Say exactly: "Would you like me to show all ingested source files?"' });
                     }
                   }
                 }}
-                className={`p-4 rounded-2xl transition-all relative ${selectedSource ? 'bg-primary/20 text-primary-container' : 'bg-surface-container/50 text-on-surface/40 hover:text-on-surface hover:bg-surface-highest'}`}
+                className={`p-4 rounded-2xl transition-all relative ${(selectedSource || showAllSourcesModal) ? 'bg-primary/20 text-primary-container' : 'bg-surface-container/50 text-on-surface/40 hover:text-on-surface hover:bg-surface-highest'}`}
               >
                 <Database className="w-6 h-6" />
-                {selectedSource && <div className="absolute top-3 right-3 w-2.5 h-2.5 bg-primary-container rounded-full border-2 border-surface" />}
+                {(selectedSource || showAllSourcesModal) && <div className="absolute top-3 right-3 w-2.5 h-2.5 bg-primary-container rounded-full border-2 border-surface" />}
               </button>
               <span className="text-[9px] font-sans font-black uppercase tracking-widest text-on-surface/20">Sources</span>
             </div>
@@ -2500,6 +2678,88 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         <input type="text" className="opacity-0 absolute" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') { handleSend((e.target as HTMLInputElement).value); (e.target as HTMLInputElement).value = ''; } }} />
         
         <AnimatePresence>
+          {showAllSourcesModal && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }} 
+              animate={{ opacity: 1, scale: 1 }} 
+              exit={{ opacity: 0, scale: 0.9 }} 
+              className="fixed inset-0 z-[110] flex items-center justify-center p-4 md:p-8 bg-black/80 backdrop-blur-md"
+            >
+              <div className="bg-surface-low/95 backdrop-blur-3xl w-full max-w-2xl rounded-[40px] border border-outline-variant shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+                <div className="p-6 border-b border-outline-variant flex justify-between items-center bg-surface-container/30">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center">
+                      <Database className="w-6 h-6 text-primary-container" />
+                    </div>
+                    <div className="flex flex-col">
+                      <h3 className="font-sans font-extrabold text-on-surface leading-tight tracking-tight">Project Sources</h3>
+                      <span className="text-[10px] text-primary-container font-sans font-black uppercase tracking-[0.2em] mt-1">
+                        {documents.length} Ingested Documents
+                      </span>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setShowAllSourcesModal(false)} 
+                    className="px-5 py-2.5 bg-surface-highest/50 rounded-2xl text-[10px] font-sans font-black uppercase tracking-widest text-on-surface/40 hover:text-on-surface transition-all"
+                  >
+                    Close
+                  </button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-6 bg-dots">
+                  <div className="grid grid-cols-1 gap-3">
+                    {sortedDocs.slice((allSourcesPage - 1) * allSourcesPageSize, allSourcesPage * allSourcesPageSize).map((doc, idx) => (
+                      <button
+                        key={doc.id}
+                        onClick={() => openSource({ documentTitle: doc.title, pageNumber: 1, excerpt: "Document preview requested from list." }, sortedDocs.map(d => ({ documentTitle: d.title, pageNumber: 1, excerpt: "Document preview requested from list." })))}
+                        className="flex items-center justify-between p-4 bg-surface-container/40 hover:bg-surface-highest rounded-2xl border border-outline-variant/50 transition-all group text-left"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-xl bg-surface-highest flex items-center justify-center text-on-surface/40 group-hover:text-primary-container transition-colors">
+                            <span className="text-xs font-black">{(allSourcesPage - 1) * allSourcesPageSize + idx + 1}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bold text-on-surface group-hover:text-primary-container transition-colors truncate max-w-[300px]">{doc.title}</span>
+                            <span className="text-[9px] font-black uppercase tracking-widest text-on-surface/20">Source Document</span>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-5 h-5 text-on-surface/10 group-hover:text-primary-container group-hover:translate-x-1 transition-all" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-6 border-t border-outline-variant flex justify-between items-center bg-surface-container/30">
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => setAllSourcesPage(prev => Math.max(1, prev - 1))}
+                      disabled={allSourcesPage === 1}
+                      className={`p-3 rounded-xl glass-panel transition-all ${allSourcesPage === 1 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:text-primary-container'}`}
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-on-surface/40 px-4">
+                      Page {allSourcesPage} of {Math.ceil(documents.length / allSourcesPageSize)}
+                    </span>
+                    <button 
+                      onClick={() => setAllSourcesPage(prev => Math.min(Math.ceil(documents.length / allSourcesPageSize), prev + 1))}
+                      disabled={allSourcesPage >= Math.ceil(documents.length / allSourcesPageSize)}
+                      className={`p-3 rounded-xl glass-panel transition-all ${allSourcesPage >= Math.ceil(documents.length / allSourcesPageSize) ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/10 hover:text-primary-container'}`}
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <button 
+                    onClick={() => setShowAllSourcesModal(false)} 
+                    className="px-10 py-4 bg-primary-container text-on-primary-container rounded-2xl text-sm font-bold shadow-lg hover:brightness-110 active:scale-95 transition-all"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {selectedSource && (
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }} 
@@ -2964,15 +3224,14 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     )
   }
   </AnimatePresence>
-  
-  {/* Exit Kiosk Button - Bottom Right */}
-  <button 
-    onClick={handleExit}
-    className="fixed bottom-4 right-4 z-[300] text-[10px] text-white/20 hover:text-white/60 transition-colors font-sans uppercase tracking-[0.4em] cursor-pointer"
-  >
-    Close
-  </button>
-  </div>
+      {/* Kiosk Exit Link */}
+      <button
+        onClick={onExit}
+        className="fixed bottom-2 right-2 z-[9999] text-[10px] text-white/20 hover:text-white/60 transition-colors bg-transparent border-none p-1 cursor-pointer font-sans"
+      >
+        Close
+      </button>
+    </div>
   </div>
   );
 };
@@ -5846,10 +6105,6 @@ export default function App() {
     });
   }, []);
 
-  const requestFullscreen = () => {
-    document.documentElement.requestFullscreen().catch(e => console.warn("Fullscreen request failed", e));
-  };
-
   if (mode === 'select') {
     return (
       <div className="min-h-screen bg-bloom bg-dots flex flex-col items-center p-4 md:p-8 relative overflow-y-auto">
@@ -5909,7 +6164,13 @@ export default function App() {
                   {projects.map(p => (
                     <button 
                       key={p.id}
-                      onClick={() => { setSelectedProject(p); setMode('kiosk'); requestFullscreen(); }}
+                      onClick={() => { 
+                        setSelectedProject(p); 
+                        setMode('kiosk');
+                        if (document.documentElement.requestFullscreen) {
+                          document.documentElement.requestFullscreen().catch(() => {});
+                        }
+                      }}
                       className="w-full p-4 bg-white/5 hover:bg-blue-600/20 rounded-2xl text-left flex justify-between items-center group/item transition-all border border-transparent hover:border-blue-500/30"
                     >
                       <span className="font-bold text-slate-200 group-hover/item:text-blue-400 text-sm md:text-base">{p.title}</span>
@@ -5928,7 +6189,13 @@ export default function App() {
 
   if (mode === 'admin') return (
     <AdminDashboard 
-      onLaunchKiosk={(p) => { setSelectedProject(p); setMode('kiosk'); requestFullscreen(); }} 
+      onLaunchKiosk={(p) => { 
+        setSelectedProject(p); 
+        setMode('kiosk');
+        if (document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        }
+      }} 
       sessionTimeout={sessionTimeout}
       setSessionTimeout={setSessionTimeout}
       billingVoiceRate={billingVoiceRate}
@@ -5939,7 +6206,16 @@ export default function App() {
   );
   if (mode === 'kiosk' && selectedProject) return (
     <AnimatePresence mode="wait">
-      <KioskMode project={selectedProject} sessionTimeout={sessionTimeout} onExit={() => setMode('select')} />
+      <KioskMode 
+        project={selectedProject} 
+        sessionTimeout={sessionTimeout} 
+        onExit={() => {
+          if (document.fullscreenElement && document.exitFullscreen) {
+            document.exitFullscreen().catch(() => {});
+          }
+          setMode('select');
+        }} 
+      />
     </AnimatePresence>
   );
 
