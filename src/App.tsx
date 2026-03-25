@@ -12,6 +12,9 @@ import {
 import { Project, Message, Document, Account, User as UserType, Analytics, ProjectMessageLogItem, GlobalMessageLogItem, UsageLogItem, PaginatedResponse } from './types';
 import { generateGroundedAnswer } from './services/aiService';
 import { printSessionReceipt } from './services/printer';
+import { SummaryPage } from './components/SummaryPage';
+import { SummaryPopup } from './components/SummaryPopup';
+import { VoiceOrb } from './components/VoiceOrb';
 import { QRCodeCanvas } from 'qrcode.react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
@@ -51,529 +54,6 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 const API_BASE = ''; // Force relative paths for Cloud Run environment
 
 // --- Components ---
-
-const SummaryPage = ({ sessionId }: { sessionId: string }) => {
-  const [summary, setSummary] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    console.log("SummaryPage: Fetching summary for session:", sessionId, "using API_BASE:", API_BASE || "(relative)");
-    const fetchSummary = async () => {
-      try {
-        setLoading(true);
-        const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/summary`);
-        if (!res.ok) {
-          throw new Error("Session not found or expired.");
-        }
-        const data = await res.json();
-        setSummary(data);
-      } catch (err: any) {
-        console.error("Failed to fetch summary:", err);
-        setError(err.message || "An unexpected error occurred.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (sessionId) {
-      fetchSummary();
-    } else {
-      setLoading(false);
-    }
-  }, [sessionId]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-bloom bg-dots">
-        <div className="flex flex-col items-center gap-6">
-          <div className="relative">
-            <div className="w-16 h-16 bg-app-accent/20 rounded-full blur-2xl absolute inset-0 animate-pulse" />
-            <RefreshCw className="w-10 h-10 text-app-accent animate-spin relative z-10" />
-          </div>
-          <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-xs">Decrypting Summary...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !summary) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-bloom bg-dots p-6">
-        <div className="text-center p-10 bg-surface-low border border-white/10 rounded-[40px] max-w-md shadow-2xl">
-          <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <AlertTriangle className="w-8 h-8 text-red-500" />
-          </div>
-          <h1 className="text-2xl font-bold text-white mb-3 tracking-tight">Session Expired</h1>
-          <p className="text-slate-300 leading-relaxed mb-8">{error || "The session summary you are looking for is no longer available or the link is invalid."}</p>
-          <div className="pt-8 border-t border-white/5">
-            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-indigo-400 mb-4">Support Protocol</p>
-            <div className="space-y-2">
-              <p className="text-white font-medium text-sm">support@voiceit.ai</p>
-              <p className="text-slate-500 text-xs flex items-center gap-2">
-                <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-9 w-auto" referrerPolicy="no-referrer" />
-                Enterprise Support
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-bloom bg-dots p-6 md:p-12 font-sans text-white overflow-y-auto">
-      <div className="max-w-3xl mx-auto">
-        <header className="mb-16 flex justify-between items-end">
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-app-accent">Verified Session</span>
-            </div>
-            <h1 className="text-4xl md:text-5xl font-bold tracking-tighter mb-2">Session Summary</h1>
-            <p className="text-app-muted font-medium flex items-center gap-2">
-              <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-12 w-auto" referrerPolicy="no-referrer" />
-              Assistant • {new Date(summary.timestamp).toLocaleDateString(undefined, { dateStyle: 'long' })}
-            </p>
-          </div>
-          <div className="w-14 h-14 glass-panel rounded-2xl flex items-center justify-center text-app-accent shadow-[0_0_30px_rgba(59,130,246,0.2)]">
-            <Volume2 className="w-7 h-7" />
-          </div>
-        </header>
-
-        <section className="space-y-12 mb-20">
-          <div className="flex items-center gap-4 mb-8">
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent to-white/10" />
-            <h2 className="text-xs font-bold text-app-accent uppercase tracking-[0.4em] whitespace-nowrap">
-              Interaction Log
-            </h2>
-            <div className="h-px flex-1 bg-gradient-to-l from-transparent to-white/10" />
-          </div>
-
-          {summary.qa && summary.qa.length > 0 ? (
-            summary.qa.map((item: any, i: number) => (
-              <div key={i} className="glass-panel p-8 md:p-10 rounded-[40px] relative overflow-hidden group hover:border-app-accent/30 transition-all duration-500">
-                <div className="absolute -top-24 -right-24 w-48 h-48 bg-app-accent/5 rounded-full blur-3xl group-hover:bg-app-accent/10 transition-all" />
-                
-                <div className="mb-10 relative z-10">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center">
-                      <MessageSquare className="w-4 h-4 text-app-muted" />
-                    </div>
-                    <p className="text-app-muted font-bold text-[10px] uppercase tracking-[0.3em]">User Query</p>
-                  </div>
-                  <p className="text-white font-bold text-2xl md:text-3xl leading-tight tracking-tight">{item.q}</p>
-                </div>
-
-                <div className="relative z-10 pl-6 border-l-2 border-app-accent bg-app-accent/5 p-6 md:p-8 rounded-r-[32px]">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-8 h-8 rounded-lg bg-app-accent/20 flex items-center justify-center">
-                      <Volume2 className="w-4 h-4 text-app-accent" />
-                    </div>
-                    <p className="text-app-accent font-bold text-[10px] uppercase tracking-[0.3em] flex items-center gap-2">
-                      <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-9 w-auto" referrerPolicy="no-referrer" />
-                      Response
-                    </p>
-                  </div>
-                  <p className="text-white/90 leading-relaxed text-lg md:text-xl font-medium">{item.a}</p>
-                  
-                  {item.sources && item.sources.length > 0 && (
-                    <div className="mt-8 pt-8 border-t border-white/5 space-y-4">
-                      <p className="text-[10px] font-bold text-app-muted uppercase tracking-[0.3em]">Knowledge Sources</p>
-                      <div className="flex flex-wrap gap-3">
-                        {item.sources.map((src: any, si: number) => (
-                          <div key={si} className="group/source relative">
-                            <div className="text-[10px] glass-panel px-4 py-2 rounded-xl text-white/70 flex items-center gap-2 hover:bg-white/10 transition-all cursor-default">
-                              <BookOpen className="w-3.5 h-3.5 text-app-accent" />
-                              <span className="font-bold">{src.documentTitle}</span>
-                              <span className="opacity-30">•</span>
-                              <span className="text-app-accent">Page {src.pageNumber}</span>
-                            </div>
-                            {src.excerpt && (
-                              <div className="mt-3 p-5 bg-white/5 border-l-2 border-app-accent/30 rounded-r-2xl text-sm text-white/60 italic leading-relaxed">
-                                <p className="font-bold text-[9px] uppercase tracking-[0.2em] text-app-accent mb-2 not-italic">Verified Excerpt</p>
-                                "{src.excerpt}"
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="text-center py-20 glass-panel rounded-[40px] border-dashed">
-              <p className="text-app-muted font-medium italic">No interaction data found for this session.</p>
-            </div>
-          )}
-        </section>
-
-        <section className="space-y-6 mb-20">
-          <div className="flex items-center gap-4 mb-8">
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent to-white/10" />
-            <h2 className="text-xs font-bold text-app-accent uppercase tracking-[0.4em] whitespace-nowrap">
-              Reference Library
-            </h2>
-            <div className="h-px flex-1 bg-gradient-to-l from-transparent to-white/10" />
-          </div>
-
-          {summary.sources && summary.sources.length > 0 ? (
-            <div className="grid grid-cols-1 gap-4">
-              {Array.from(new Map(summary.sources.map((item: any) => [item.id || item.file_url || item.title, item])).values()).map((doc: any, i: number) => (
-                <div key={i} className="glass-panel p-6 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-6 group hover:border-app-accent/30 transition-all duration-300">
-                  <div className="flex items-center gap-5">
-                    <div className="w-14 h-14 bg-white/5 rounded-2xl flex items-center justify-center text-app-muted group-hover:bg-app-accent/10 group-hover:text-app-accent transition-all">
-                      <FileText className="w-7 h-7" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-white text-lg leading-tight mb-1">{doc.title}</h3>
-                      <p className="text-[10px] text-app-muted uppercase tracking-widest font-bold">{doc.page_count} pages • {doc.mime_type || 'PDF Document'}</p>
-                    </div>
-                  </div>
-                  {doc.file_url ? (
-                    <div className="flex items-center gap-3">
-                      <a 
-                        href={doc.file_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-xs font-bold text-white transition-all"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                        View
-                      </a>
-                      <a 
-                        href={doc.file_url} 
-                        download={doc.original_filename || doc.title}
-                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-app-accent text-white rounded-2xl text-xs font-bold hover:brightness-110 transition-all shadow-[0_0_20px_rgba(59,130,246,0.2)]"
-                      >
-                        <Download className="w-4 h-4" />
-                        Download
-                      </a>
-                    </div>
-                  ) : (
-                    <div className="px-6 py-3 bg-white/5 text-app-muted rounded-2xl text-[10px] font-bold uppercase tracking-widest italic">
-                      Restricted Access
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-app-muted text-center py-10 italic">No reference documents were utilized in this session.</p>
-          )}
-        </section>
-
-        <footer className="pt-16 border-t border-white/5 text-center pb-20">
-          <div className="inline-flex items-center gap-3 text-white font-bold text-xl mb-8 tracking-tight">
-            <div className="w-10 h-10 glass-panel rounded-xl flex items-center justify-center">
-              <Volume2 className="w-5 h-5 text-app-accent" />
-            </div>
-            <div className="flex items-center gap-2">
-              <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-[60px] w-auto" referrerPolicy="no-referrer" />
-              Assistant
-            </div>
-          </div>
-          <div className="flex flex-col items-center gap-8">
-            <div className="flex flex-wrap justify-center gap-10">
-              <div className="flex flex-col items-center gap-2">
-                <p className="text-[9px] font-bold uppercase tracking-[0.3em] text-app-muted">Inquiries</p>
-                <p className="text-white font-medium">869-467-1623</p>
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                <p className="text-[9px] font-bold uppercase tracking-[0.3em] text-app-muted">Email</p>
-                <p className="text-white font-medium">info@lawcommission.gov.kn</p>
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                <p className="text-[9px] font-bold uppercase tracking-[0.3em] text-app-muted">Developer</p>
-                <p className="text-white font-medium">Cherami Ltd.</p>
-              </div>
-            </div>
-            <p className="text-app-muted text-[10px] font-bold uppercase tracking-[0.5em] mt-4">Secure AI Infrastructure</p>
-          </div>
-        </footer>
-      </div>
-    </div>
-  );
-};
-
-const SummaryPopup = ({ sessionId, onClose, onPrint }: { sessionId: string, onClose: () => void, onPrint?: () => void }) => {
-  const PUBLIC_BASE_URL = import.meta.env.VITE_PUBLIC_BASE_URL || window.location.origin;
-  const summaryUrl = `${PUBLIC_BASE_URL}/session/${sessionId}`;
-  const hasAutoPrinted = useRef(false);
-  const [printError, setPrintError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!hasAutoPrinted.current) {
-      hasAutoPrinted.current = true;
-      printSessionReceipt(sessionId).catch(e => {
-        console.error("Auto-print failed:", e);
-        setPrintError("Print failed");
-      });
-    }
-  }, [sessionId]);
-
-  const handlePrint = () => {
-    setPrintError(null);
-    if (onPrint) onPrint();
-    printSessionReceipt(sessionId).catch(e => {
-      console.error("Manual print failed:", e);
-      setPrintError("Printer unavailable");
-    });
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-      {/* Printable Area (Hidden in UI, visible in print) */}
-      <div id="print-area" className="hidden">
-        <div style={{ textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>
-          <div className="flex items-center gap-2" style={{ margin: '0' }}>
-            <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-[72px] w-auto" referrerPolicy="no-referrer" />
-            <h1 style={{ fontSize: '18px', margin: '0' }}>Session</h1>
-          </div>
-          <p style={{ fontSize: '10px', color: '#666', margin: '2px 0' }}>Thank you for visiting</p>
-        </div>
-        
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px 0' }}>
-          <p style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '10px' }}>Scan for Session Summary</p>
-          <QRCodeCanvas value={summaryUrl} size={150} level="H" includeMargin={false} />
-          <p style={{ fontSize: '9px', color: '#888', marginTop: '10px', textAlign: 'center' }}>Scan this code to view your questions, answers, and download source documents.</p>
-        </div>
-
-        <div style={{ borderTop: '1px solid #eee', paddingTop: '10px', fontSize: '8px', color: '#444' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-            <span>Tel: 869-467-1623</span>
-            <span>info@lawcommission.gov.kn</span>
-          </div>
-          <div style={{ textAlign: 'center', fontWeight: 'bold', color: '#000' }}>
-            Powered by Cherami Ltd. - 868-222-0011
-          </div>
-        </div>
-      </div>
-
-      <style>{`
-        @media print {
-          body * {
-            visibility: hidden !important;
-          }
-          #print-area, #print-area * {
-            visibility: visible !important;
-            display: flex !important;
-          }
-          #print-area {
-            position: fixed !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 4in !important;
-            height: 4in !important;
-            padding: 0.2in !important;
-            background: white !important;
-            color: black !important;
-            font-family: sans-serif !important;
-            flex-direction: column !important;
-            justify-content: space-between !important;
-            z-index: 9999 !important;
-          }
-          .no-print {
-            display: none !important;
-          }
-        }
-      `}</style>
-      
-      <motion.div 
-        initial={{ scale: 0.9, opacity: 0, y: 20 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="glass-panel rounded-[40px] p-8 md:p-12 max-w-2xl w-full text-center shadow-2xl relative overflow-hidden no-print"
-      >
-        {/* UI Content */}
-        <div className="no-print relative z-10">
-          <div className="absolute -top-12 -left-12 w-48 h-48 bg-app-accent/10 rounded-full blur-3xl" />
-          <div className="absolute -bottom-12 -right-12 w-48 h-48 bg-app-warning/10 rounded-full blur-3xl" />
-          
-          <div className="mb-6 inline-flex items-center justify-center w-16 h-16 bg-app-accent/10 text-app-accent rounded-2xl border border-app-accent/20">
-            <CheckCircle2 className="w-8 h-8" />
-          </div>
-          
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4 tracking-tight">Session Complete</h2>
-          <p className="text-app-muted text-lg mb-8 flex items-center justify-center gap-2">
-            Thank you for using 
-            <img src="https://caribdesigns.com/voiceit-logo.png" alt="VoiceIt" className="h-[60px] w-auto" referrerPolicy="no-referrer" />. 
-            Your session has been securely summarized.
-          </p>
-          
-          <div className="flex flex-col items-center justify-center mb-10">
-            <div className="p-6 bg-white rounded-3xl shadow-[0_0_40px_rgba(255,255,255,0.1)]">
-              <QRCodeCanvas value={summaryUrl} size={180} level="H" includeMargin={true} />
-            </div>
-            <p className="mt-4 text-app-accent text-[10px] font-bold uppercase tracking-[0.3em] animate-pulse">Scan to save your summary</p>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10 text-left">
-            <div className="space-y-3">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-app-muted">Contact Information</p>
-              <div className="flex items-center gap-3 text-white/80">
-                <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center">
-                  <Phone className="w-4 h-4 text-app-accent" />
-                </div>
-                <span className="font-medium text-sm">869-467-1623</span>
-              </div>
-              <div className="flex items-center gap-3 text-white/80">
-                <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center">
-                  <Mail className="w-4 h-4 text-app-accent" />
-                </div>
-                <span className="font-medium text-sm truncate">info@lawcommission.gov.kn</span>
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-app-muted">Powered By</p>
-              <div className="flex items-center gap-3 text-white">
-                <div className="w-8 h-8 rounded-lg bg-app-accent/20 flex items-center justify-center">
-                  <Building2 className="w-4 h-4 text-app-accent" />
-                </div>
-                <span className="font-bold">Cherami Ltd.</span>
-              </div>
-              <div className="flex items-center gap-3 text-white/80">
-                <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center">
-                  <Phone className="w-4 h-4 text-app-accent" />
-                </div>
-                <span className="font-medium text-sm">868-222-0011</span>
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 flex flex-col gap-2">
-              <button 
-                onClick={handlePrint}
-                className="w-full py-5 bg-white/5 border border-white/10 text-white rounded-2xl font-bold hover:bg-white/10 transition-all flex items-center justify-center gap-2"
-              >
-                <Printer className="w-5 h-5" />
-                Print Receipt
-              </button>
-              {printError && (
-                <p className="text-red-500 text-[10px] font-bold uppercase tracking-widest animate-pulse">{printError}</p>
-              )}
-            </div>
-            <button 
-              onClick={onClose}
-              className="flex-1 py-5 bg-app-accent text-white rounded-2xl font-bold hover:brightness-110 transition-all shadow-[0_0_30px_rgba(59,130,246,0.3)] active:scale-[0.98]"
-            >
-              Close & Finish
-            </button>
-          </div>
-        </div>
-      </motion.div>
-    </div>
-  );
-};
-
-const VoiceOrb = ({ isSpeaking, isListening, isThinking, isShowingSourcePending, onClick }: { isSpeaking: boolean, isListening: boolean, isThinking: boolean, isShowingSourcePending?: boolean, onClick?: () => void }) => {
-  // Simulate dynamic voice activity when speaking
-  const [pulseScale, setPulseScale] = useState(1);
-  const [glowIntensity, setGlowIntensity] = useState(1);
-  
-  useEffect(() => {
-    let interval: any;
-    if (isSpeaking) {
-      interval = setInterval(() => {
-        // More dynamic, speech-like pulsing
-        setPulseScale(1 + Math.random() * 0.15);
-        setGlowIntensity(1 + Math.random() * 0.6);
-      }, 70);
-    } else {
-      setPulseScale(1);
-      setGlowIntensity(1);
-    }
-    return () => clearInterval(interval);
-  }, [isSpeaking]);
-
-  return (
-    <div 
-      onClick={onClick}
-      className={`relative w-40 h-40 md:w-[280px] md:h-[280px] flex items-center justify-center ${onClick ? 'cursor-pointer active:scale-95 transition-transform' : ''}`}
-    >
-      {/* Ambient Radial Glow - Bloom Effect */}
-      <div 
-        className={`absolute inset-0 rounded-full bg-app-accent/20 blur-[60px] md:blur-[120px] transition-all duration-700 ${isSpeaking ? 'opacity-100' : isListening ? 'scale-125 opacity-80' : 'scale-100 opacity-40'}`} 
-        style={{ transform: `scale(${isSpeaking ? 1.5 * glowIntensity : 1})` }}
-      />
-      
-      {/* Secondary Glow Layer */}
-      <div 
-        className={`absolute inset-0 rounded-full bg-indigo-500/10 blur-[50px] md:blur-[90px] transition-all duration-700 delay-150 ${isSpeaking ? 'opacity-90' : isListening ? 'scale-110 opacity-70' : 'scale-90 opacity-20'}`} 
-        style={{ transform: `scale(${isSpeaking ? 1.25 * glowIntensity : 1})` }}
-      />
-
-      {/* Ripple Effects for Speaking and Listening */}
-      {(isListening || isSpeaking) && (
-        <>
-          <motion.div 
-            initial={{ scale: 1, opacity: 0.5 }}
-            animate={{ scale: isSpeaking ? 2.2 : 1.5, opacity: 0 }}
-            transition={{ repeat: Infinity, duration: isSpeaking ? 1.5 : 2, ease: "easeOut" }}
-            className={`absolute inset-0 border-2 rounded-full ${isSpeaking ? 'border-white/30' : 'border-app-accent/30'}`}
-          />
-          <motion.div 
-            initial={{ scale: 1, opacity: 0.3 }}
-            animate={{ scale: isSpeaking ? 2.5 : 1.8, opacity: 0 }}
-            transition={{ repeat: Infinity, duration: isSpeaking ? 1.5 : 2, delay: 0.5, ease: "easeOut" }}
-            className={`absolute inset-0 border rounded-full ${isSpeaking ? 'border-white/20' : 'border-app-accent/20'}`}
-          />
-        </>
-      )}
-
-      {/* Core Orb Container */}
-      <motion.div
-        animate={{
-          scale: isSpeaking ? pulseScale : isListening ? [1, 1.03, 1] : 1,
-        }}
-        transition={{
-          scale: isSpeaking ? { type: "spring", stiffness: 400, damping: 12 } : { repeat: Infinity, duration: 1.5, ease: "easeInOut" },
-        }}
-        className="relative w-40 h-40 md:w-56 md:h-56 rounded-full flex items-center justify-center overflow-hidden shadow-[0_0_100px_rgba(0,92,170,0.3)]"
-      >
-        {/* Smooth Gradient Fill - 135deg per Design System */}
-        <div 
-          className={`absolute inset-0 transition-all duration-700 ${isSpeaking ? 'brightness-150 saturate-150' : isListening ? 'brightness-110 saturate-110' : 'brightness-90 saturate-90'}`} 
-          style={{ 
-            background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-container) 100%)',
-            filter: isSpeaking ? `contrast(1.2) brightness(${glowIntensity})` : 'none'
-          }} 
-        />
-        
-        {/* Surface Highlight / Reflection */}
-        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-white/20 to-transparent opacity-30" />
-        
-        {/* Inner Ambient Glow */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_white_0%,_transparent_70%)] opacity-10 animate-orb-inner-pulse" />
-        
-        {/* Glassy Overlay */}
-        <div className="absolute inset-0 rounded-full border border-outline-variant bg-white/5 backdrop-blur-[2px] shadow-inner" />
-        
-        {/* Speaking Pulse Ring */}
-        {isSpeaking && (
-          <motion.div 
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 2.2, opacity: 0 }}
-            transition={{ repeat: Infinity, duration: 2 }}
-            className="absolute inset-0 border-2 border-white/40 rounded-full"
-          />
-        )}
-      </motion.div>
-
-      {/* Thinking Indicator - Integrated more elegantly */}
-      {isThinking && (
-        <div className="absolute bottom-4 flex gap-3 z-30">
-          <motion.span animate={{ opacity: [0.3, 1, 0.3], scale: [0.9, 1.1, 0.9] }} transition={{ repeat: Infinity, duration: 1.2 }} className="w-2.5 h-2.5 bg-white rounded-full shadow-[0_0_15px_rgba(255,255,255,0.8)]" />
-          <motion.span animate={{ opacity: [0.3, 1, 0.3], scale: [0.9, 1.1, 0.9] }} transition={{ repeat: Infinity, duration: 1.2, delay: 0.2 }} className="w-2.5 h-2.5 bg-white rounded-full shadow-[0_0_15px_rgba(255,255,255,0.8)]" />
-          <motion.span animate={{ opacity: [0.3, 1, 0.3], scale: [0.9, 1.1, 0.9] }} transition={{ repeat: Infinity, duration: 1.2, delay: 0.4 }} className="w-2.5 h-2.5 bg-white rounded-full shadow-[0_0_15px_rgba(255,255,255,0.8)]" />
-        </div>
-      )}
-    </div>
-  );
-};
 
 const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sessionTimeout: number, onExit: () => void }) => {
   const [isPresent, setIsPresent] = useState(false);
@@ -819,6 +299,23 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
     lastReadPromptedSourceKeyRef.current = null;
   }, []);
 
+  const openAllSourcesModal = useCallback(() => {
+    setShowAllSourcesModal(true);
+    setAllSourcesPage(1);
+    awaitingAllSourcesConfirmationRef.current = false;
+    setIsAllSourcesPending(false);
+  }, []);
+
+  const closeAllSourcesExperience = useCallback(() => {
+    setActivePreviewSources([]);
+    setActivePreviewIndex(0);
+    setShowAllSourcesModal(false);
+    awaitingAllSourcesConfirmationRef.current = false;
+    awaitingSourceConfirmationRef.current = false;
+    sourceFlowStateRef.current = 'idle';
+    lastReadPromptedSourceKeyRef.current = null;
+  }, []);
+
   const openSource = useCallback((source: any, sourceSet?: any[]) => {
     const sourcesToPreview = sourceSet && sourceSet.length > 0 ? sourceSet : [source];
     
@@ -833,7 +330,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
           id: 'source-' + Date.now() + '-' + finalSources.length,
           project_id: project.id,
           title: s.documentTitle,
-          content: s.excerpt,
+          content: s.content || s.excerpt,
           page_count: 1,
           ...s
         });
@@ -1455,7 +952,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
         - If they say "close source", "hide source", or "stop showing", call the 'closeSource' tool.
         - You can handle multiple sources. If there are multiple, ask which one they want to see or offer to show them all.
         - READ SOURCE FEATURE: When a source is shown on screen via 'showSource', you MUST ask the user if they would like you to read out what is shown. If they say yes, read the excerpt clearly and naturally.
-        - ALL SOURCES FEATURE: If the user asks to see "all sources", "list sources", "what are the sources", or similar, you MUST ask: "Would you like me to show all ingested source files?". If they say "yes", "show me", or any affirmative, call the 'listAllSources' tool.
+        - ALL SOURCES FEATURE: If the user asks to see "all sources", "list sources", "what are the sources", or similar, immediately call the 'listAllSources' tool. If you are proactively offering to show all sources, then ask: "Would you like me to show all ingested source files?". If they then say "yes", "show me", or any affirmative, call the 'listAllSources' tool.
         - NAVIGATION: When the "all sources" list is open, the user can say "next page", "previous page", "first page", "last page", "go to page [number]", or "open [document name/index]". When a document preview is open, they can say "next", "previous", or "close".
         
         SESSION END INSTRUCTION:
@@ -1706,8 +1203,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       }
                     });
                   } else if (call.name === 'listAllSources') {
-                    setShowAllSourcesModal(true);
-                    setAllSourcesPage(1);
+                    openAllSourcesModal();
                     sessionPromise.then(s => {
                       if (s) {
                         s.sendToolResponse({
@@ -1869,15 +1365,10 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 const normalized = text.toLowerCase().trim().replace(/[.,?!]/g, '');
                 
                 // --- All Sources Intent Recognition ---
-                const allSourcesTriggers = ['open sources', 'open all sources', 'what are all the sources', 'list sources', 'show all sources', 'what are the sources', 'show sources'];
+                const allSourcesTriggers = ['open sources', 'open all sources', 'what are all the sources', 'list sources', 'show all sources', 'what are the sources', 'show sources', 'show me all files', 'what files do you have', 'what ingested files'];
                 if (allSourcesTriggers.some(p => normalized === p || normalized.includes(p))) {
-                  if (!showAllSourcesModalRef.current && !awaitingAllSourcesConfirmationRef.current) {
-                    awaitingAllSourcesConfirmationRef.current = true;
-                    sessionPromise.then(s => {
-                      if (s) {
-                        s.sendRealtimeInput({ text: 'Say exactly: "Would you like me to show all ingested source files?"' });
-                      }
-                    });
+                  if (!showAllSourcesModalRef.current) {
+                    openAllSourcesModal();
                     return;
                   }
                 }
@@ -1982,7 +1473,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                   const prevPagePatterns = ['previous page', 'page previous', 'page back', 'back page', 'previous', 'back'];
                   const firstPagePatterns = ['first page', 'go to first page'];
                   const lastPagePatterns = ['last page', 'go to last page'];
-                  const closePatterns = ['close', 'close sources', 'hide sources', 'stop showing', 'exit', 'done'];
+                  const closePatterns = ['close', 'close sources', 'hide sources', 'stop showing', 'exit', 'done', 'close all source documents', 'close all sources', 'close all source windows', 'close all documents', 'hide all source documents', 'hide all sources', 'dismiss all sources', 'exit all sources'];
 
                   if (nextPagePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
                     const totalPages = Math.ceil(documents.length / allSourcesPageSize);
@@ -2003,7 +1494,9 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                     return;
                   }
                   if (closePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
-                    setShowAllSourcesModal(false);
+                    closeAllSourcesExperience();
+                    sourceFlowStateRef.current = 'awaiting_post_source_action';
+                    askAnythingElse();
                     return;
                   }
 
@@ -2035,7 +1528,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       const docIndex = (allSourcesPageRef.current - 1) * allSourcesPageSize + i;
                       if (sortedDocsRef.current[docIndex]) {
                         const doc = sortedDocsRef.current[docIndex];
-                        openSource({ documentTitle: doc.title, pageNumber: 1, excerpt: doc.content }, sortedDocsRef.current.map(d => ({ documentTitle: d.title, pageNumber: 1, excerpt: d.content })));
+                        openSource({ documentTitle: doc.title, pageNumber: 1, content: doc.content, excerpt: doc.content }, sortedDocsRef.current.map(d => ({ documentTitle: d.title, pageNumber: 1, content: d.content, excerpt: d.content })));
                         setActivePreviewIndex(docIndex);
                         
                         // AI follow-up
@@ -2053,7 +1546,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                   for (const doc of sortedDocsRef.current) {
                     if (normalized.includes(`open ${doc.title.toLowerCase()}`) || normalized.includes(`show ${doc.title.toLowerCase()}`)) {
                       const docIndex = sortedDocsRef.current.indexOf(doc);
-                      openSource({ documentTitle: doc.title, pageNumber: 1, excerpt: doc.content }, sortedDocsRef.current.map(d => ({ documentTitle: d.title, pageNumber: 1, excerpt: d.content })));
+                      openSource({ documentTitle: doc.title, pageNumber: 1, content: doc.content, excerpt: doc.content }, sortedDocsRef.current.map(d => ({ documentTitle: d.title, pageNumber: 1, content: d.content, excerpt: d.content })));
                       setActivePreviewIndex(docIndex);
                       
                       // AI follow-up
@@ -2071,8 +1564,8 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                 if (selectedSourceRef.current) {
                   const nextPatterns = ['next', 'next source', 'show next', 'go next', 'forward', 'skip'];
                   const prevPatterns = ['previous', 'previous source', 'go back', 'show previous', 'back'];
-                  const closePatterns = ['close', 'close source', 'hide source', 'stop showing', 'not interested', 'no thanks', 'done'];
-                  const closeAllPatterns = ['close all', 'hide all'];
+                  const closePatterns = ['close', 'close source', 'hide source', 'stop showing', 'not interested', 'no thanks', 'done', 'close the window', 'close window', 'close this window', 'close this source', 'close this document', 'hide this window', 'dismiss this window'];
+                  const closeAllPatterns = ['close all', 'hide all', 'close all source documents', 'close all sources', 'close all source windows', 'close all documents', 'hide all source documents', 'hide all sources', 'dismiss all sources', 'exit all sources'];
 
                   if (nextPatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
                     if (activePreviewIndexRef.current < activePreviewSourcesRef.current.length - 1) {
@@ -2085,14 +1578,16 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       return;
                     }
                   } else if (closeAllPatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
-                    clearSourceFlow();
+                    closeAllSourcesExperience();
                     sourceFlowStateRef.current = 'awaiting_post_source_action';
                     askAnythingElse();
                     return;
                   } else if (closePatterns.some(p => normalized === p || normalized.startsWith(p + ' ') || normalized.endsWith(' ' + p))) {
                     clearSourceFlow();
-                    sourceFlowStateRef.current = 'awaiting_post_source_action';
-                    askAnythingElse();
+                    if (!showAllSourcesModalRef.current) {
+                      sourceFlowStateRef.current = 'awaiting_post_source_action';
+                      askAnythingElse();
+                    }
                     return;
                   }
                 }
@@ -2711,7 +2206,7 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                     {sortedDocs.slice((allSourcesPage - 1) * allSourcesPageSize, allSourcesPage * allSourcesPageSize).map((doc, idx) => (
                       <button
                         key={doc.id}
-                        onClick={() => openSource({ documentTitle: doc.title, pageNumber: 1, excerpt: "Document preview requested from list." }, sortedDocs.map(d => ({ documentTitle: d.title, pageNumber: 1, excerpt: "Document preview requested from list." })))}
+                        onClick={() => openSource({ documentTitle: doc.title, pageNumber: 1, content: doc.content, excerpt: doc.content }, sortedDocs.map(d => ({ documentTitle: d.title, pageNumber: 1, content: d.content, excerpt: d.content })))}
                         className="flex items-center justify-between p-4 bg-surface-container/40 hover:bg-surface-highest rounded-2xl border border-outline-variant/50 transition-all group text-left"
                       >
                         <div className="flex items-center gap-4">
@@ -2808,16 +2303,18 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                       </button>
                     </>
                   )}
-                  <div className="aspect-[3/4] glass-panel rounded-[40px] p-8 md:p-14 relative overflow-hidden shadow-2xl border-white/5">
+                  <div className="glass-panel rounded-[40px] p-8 md:p-14 relative shadow-2xl border-white/5 h-full min-h-[420px] max-h-[65vh] overflow-y-auto">
                     <div className="absolute -top-24 -right-24 w-64 h-64 bg-app-accent/5 rounded-full blur-3xl" />
                     <div className="absolute top-6 right-8 text-[10px] font-bold uppercase tracking-[0.3em] text-app-accent">Page {selectedSource.pageNumber}</div>
                     <div className="space-y-6 relative z-10 text-left">
                       <div className="h-4 w-3/4 bg-white/5 rounded-full" />
                       <div className="h-4 w-full bg-white/5 rounded-full" />
                       <div className="h-4 w-5/6 bg-white/5 rounded-full" />
-                      <div className="py-10 px-8 bg-app-accent/5 border-l-2 border-app-accent rounded-r-[32px] text-white/90 italic font-serif text-xl md:text-2xl leading-relaxed shadow-inner">
-                        <p className="not-italic text-[10px] font-bold uppercase tracking-[0.3em] text-app-accent mb-4 opacity-70">Verified Excerpt</p>
-                        "{selectedSource.excerpt}"
+                      <div className="py-10 px-8 bg-app-accent/5 border-l-2 border-app-accent rounded-r-[32px] text-white/90 leading-relaxed shadow-inner">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-app-accent mb-4 opacity-70">Document Content</p>
+                        <pre className="whitespace-pre-wrap font-sans text-sm md:text-base">
+                          {selectedSource.content || selectedSource.excerpt}
+                        </pre>
                       </div>
                       <div className="h-4 w-full bg-white/5 rounded-full" />
                       <div className="h-4 w-2/3 bg-white/5 rounded-full" />
@@ -3154,16 +2651,18 @@ const KioskMode = ({ project, sessionTimeout, onExit }: { project: Project, sess
                     </button>
                   </>
                 )}
-                <div className="aspect-[3/4] glass-panel rounded-[40px] p-8 md:p-14 relative overflow-hidden shadow-2xl border-white/5">
+                <div className="glass-panel rounded-[40px] p-8 md:p-14 relative shadow-2xl border-white/5 h-full min-h-[420px] max-h-[65vh] overflow-y-auto">
                   <div className="absolute -top-24 -right-24 w-64 h-64 bg-app-accent/5 rounded-full blur-3xl" />
                   <div className="absolute top-6 right-8 text-[10px] font-bold uppercase tracking-[0.3em] text-app-accent">Page {selectedSource.pageNumber}</div>
                   <div className="space-y-6 relative z-10">
                     <div className="h-4 w-3/4 bg-white/5 rounded-full" />
                     <div className="h-4 w-full bg-white/5 rounded-full" />
                     <div className="h-4 w-5/6 bg-white/5 rounded-full" />
-                    <div className="py-10 px-8 bg-app-accent/5 border-l-2 border-app-accent rounded-r-[32px] text-white/90 italic font-serif text-xl md:text-2xl leading-relaxed shadow-inner">
-                      <p className="not-italic text-[10px] font-bold uppercase tracking-[0.3em] text-app-accent mb-4 opacity-70">Verified Excerpt</p>
-                      "{selectedSource.excerpt}"
+                    <div className="py-10 px-8 bg-app-accent/5 border-l-2 border-app-accent rounded-r-[32px] text-white/90 leading-relaxed shadow-inner">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-app-accent mb-4 opacity-70">Document Content</p>
+                      <pre className="whitespace-pre-wrap font-sans text-sm md:text-base">
+                        {selectedSource.content || selectedSource.excerpt}
+                      </pre>
                     </div>
                     <div className="h-4 w-full bg-white/5 rounded-full" />
                     <div className="h-4 w-2/3 bg-white/5 rounded-full" />

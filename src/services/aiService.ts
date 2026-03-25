@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
-import { AI_CONFIG, Document, Project } from "../types";
+import { Document, Project } from "../types";
+import { AI_CONFIG } from "../constants";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
